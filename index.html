@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Browser EPUB Creator</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --bg: #f8fafc;
+            --surface: #ffffff;
+            --border: #e2e8f0;
+            --text: #1e293b;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: var(--bg);
+            color: var(--text);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Header */
+        header {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .book-meta {
+            display: flex;
+            gap: 1rem;
+        }
+
+        input {
+            padding: 0.5rem;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        button {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+
+        button.secondary {
+            background: transparent;
+            color: var(--primary);
+            border: 1px solid var(--primary);
+        }
+
+        /* Main Layout */
+        main {
+            display: grid;
+            grid-template-columns: 250px 1fr;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* Sidebar */
+        aside {
+            background: var(--surface);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chapter-list {
+            flex: 1;
+            overflow-y: auto;
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .chapter-item {
+            padding: 1rem;
+            cursor: pointer;
+            border-bottom: 1px solid var(--border);
+            transition: background 0.2s;
+        }
+
+        .chapter-item:hover {
+            background: #f1f5f9;
+        }
+
+        .chapter-item.active {
+            background: #eff6ff;
+            border-left: 4px solid var(--primary);
+        }
+
+        .sidebar-actions {
+            padding: 1rem;
+            border-top: 1px solid var(--border);
+        }
+
+        .sidebar-actions button {
+            width: 100%;
+        }
+
+        /* Editor */
+        section.editor {
+            padding: 2rem;
+            overflow-y: auto;
+            max-width: 800px;
+            margin: 0 auto;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .editor-inputs {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            height: 100%;
+        }
+
+        input#chapter-title {
+            font-size: 1.5rem;
+            font-weight: bold;
+            border: none;
+            border-bottom: 2px solid transparent;
+            padding: 0.5rem 0;
+            background: transparent;
+        }
+
+        input#chapter-title:focus {
+            outline: none;
+            border-bottom-color: var(--primary);
+        }
+
+        textarea#chapter-body {
+            flex: 1;
+            resize: none;
+            border: none;
+            background: transparent;
+            font-size: 1.1rem;
+            line-height: 1.6;
+            font-family: 'Georgia', serif;
+            outline: none;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="book-meta">
+        <input type="text" id="book-title" placeholder="Book Title" value="My Great Novel">
+        <input type="text" id="book-author" placeholder="Author Name" value="Anonymous">
+    </div>
+    <button onclick="generateEPUB()">Download EPUB</button>
+</header>
+
+<main>
+    <aside>
+        <ul class="chapter-list" id="chapter-list">
+            </ul>
+        <div class="sidebar-actions">
+            <button class="secondary" onclick="addNewChapter()">+ New Chapter</button>
+        </div>
+    </aside>
+
+    <section class="editor">
+        <div class="editor-inputs">
+            <input type="text" id="chapter-title" placeholder="Chapter Title" oninput="updateCurrentChapter()">
+            <textarea id="chapter-body" placeholder="Start writing your chapter content here..." oninput="updateCurrentChapter()"></textarea>
+        </div>
+    </section>
+</main>
+
+<script>
+    // --- State Management ---
+    let chapters = [
+        { id: 1, title: "Chapter 1: The Beginning", content: "It was a dark and stormy night..." }
+    ];
+    let currentChapterId = 1;
+
+    // --- UI Logic ---
+    function renderList() {
+        const list = document.getElementById('chapter-list');
+        list.innerHTML = '';
+        chapters.forEach((chapter, index) => {
+            const li = document.createElement('li');
+            li.className = `chapter-item ${chapter.id === currentChapterId ? 'active' : ''}`;
+            li.textContent = chapter.title || `Chapter ${index + 1}`;
+            li.onclick = () => selectChapter(chapter.id);
+            list.appendChild(li);
+        });
+    }
+
+    function selectChapter(id) {
+        currentChapterId = id;
+        const chapter = chapters.find(c => c.id === id);
+        document.getElementById('chapter-title').value = chapter.title;
+        document.getElementById('chapter-body').value = chapter.content;
+        renderList();
+    }
+
+    function addNewChapter() {
+        const newId = Date.now();
+        chapters.push({ id: newId, title: "New Chapter", content: "" });
+        selectChapter(newId);
+    }
+
+    function updateCurrentChapter() {
+        const chapter = chapters.find(c => c.id === currentChapterId);
+        chapter.title = document.getElementById('chapter-title').value;
+        chapter.content = document.getElementById('chapter-body').value;
+        
+        // Only re-render list if title changed to maintain focus, 
+        // but debounce nicely in a real app. Here we rely on simple DOM updates.
+        // We will just update the text of the active item to avoid list jumps
+        const activeItem = document.querySelector('.chapter-item.active');
+        if(activeItem) activeItem.textContent = chapter.title;
+    }
+
+    // Initialize
+    selectChapter(1);
+
+    // --- EPUB Generation Logic ---
+    async function generateEPUB() {
+        const zip = new JSZip();
+        const title = document.getElementById('book-title').value || "Untitled";
+        const author = document.getElementById('book-author').value || "Unknown";
+        const uuid = 'urn:uuid:' + crypto.randomUUID();
+
+        // 1. Mimetype (Must be first, no compression)
+        zip.file("mimetype", "application/epub+zip", { compression: "STORE" });
+
+        // 2. Container XML
+        zip.folder("META-INF").file("container.xml", `<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+    <rootfiles>
+        <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+    </rootfiles>
+</container>`);
+
+        // 3. OEBPS Folder (Content)
+        const oebps = zip.folder("OEBPS");
+
+        // Generate Chapter XHTML files
+        let manifest = '';
+        let spine = '';
+        let navMap = '';
+
+        chapters.forEach((chapter, index) => {
+            const filename = `chapter_${index + 1}.xhtml`;
+            const fileId = `chapter_${index + 1}`;
+            
+            // simple text to HTML conversion
+            const htmlContent = chapter.content.split('\n').map(p => p.trim() ? `<p>${p}</p>` : '<br/>').join('');
+
+            const xhtml = `<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+<head>
+    <title>${chapter.title}</title>
+    <style>body { font-family: serif; line-height: 1.5; padding: 1em; }</style>
+</head>
+<body>
+    <h1>${chapter.title}</h1>
+    ${htmlContent}
+</body>
+</html>`;
+
+            oebps.file(filename, xhtml);
+
+            // Build Manifest and Spine parts
+            manifest += `<item id="${fileId}" href="${filename}" media-type="application/xhtml+xml" />\n`;
+            spine += `<itemref idref="${fileId}" />\n`;
+            
+            // Build NCX (Table of Contents for older readers)
+            navMap += `
+            <navPoint id="navPoint-${index + 1}" playOrder="${index + 1}">
+                <navLabel><text>${chapter.title}</text></navLabel>
+                <content src="${filename}" />
+            </navPoint>`;
+        });
+
+        // 4. Content.opf (Metadata)
+        const opfContent = `<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" unique-identifier="BookId" version="3.0">
+    <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+        <dc:title>${title}</dc:title>
+        <dc:creator>${author}</dc:creator>
+        <dc:identifier id="BookId">${uuid}</dc:identifier>
+        <dc:language>en</dc:language>
+        <meta property="dcterms:modified">${new Date().toISOString().split('.')[0] + 'Z'}</meta>
+    </metadata>
+    <manifest>
+        <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+        ${manifest}
+    </manifest>
+    <spine toc="ncx">
+        ${spine}
+    </spine>
+</package>`;
+
+        oebps.file("content.opf", opfContent);
+
+        // 5. TOC.ncx (Legacy TOC)
+        const ncxContent = `<?xml version="1.0" encoding="UTF-8"?>
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+    <head>
+        <meta name="dtb:uid" content="${uuid}"/>
+        <meta name="dtb:depth" content="1"/>
+        <meta name="dtb:totalPageCount" content="0"/>
+        <meta name="dtb:maxPageNumber" content="0"/>
+    </head>
+    <docTitle><text>${title}</text></docTitle>
+    <navMap>
+        ${navMap}
+    </navMap>
+</ncx>`;
+
+        oebps.file("toc.ncx", ncxContent);
+
+        // 6. Generate and Download
+        zip.generateAsync({ type: "blob" }).then(function(content) {
+            const url = window.URL.createObjectURL(content);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `${title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.epub`;
+            a.click();
+            window.URL.revokeObjectURL(url);
+        });
+    }
+</script>
+
+</body>
+</html>
