@@ -221,8 +221,8 @@
         addChapter();
         document.execCommand('defaultParagraphSeparator', false, 'p');
         
-        // Setup Drag and Drop
-        setupDragAndDrop();
+        setupDragAndDrop(); // Added in previous step
+        setupPaste();       // <--- NEW: Add this line
 
         if(window.innerWidth <= 768) {
             document.querySelector('.tab.mobile-only').style.display = 'block';
@@ -302,6 +302,28 @@
         if(!input.files[0]) return;
         insertLocalImage(input.files[0]);
         input.value = ""; // Clear input so same file can be selected again if needed
+    }
+
+    function setupPaste() {
+        const editor = document.getElementById('editor');
+        editor.addEventListener('paste', (e) => {
+            // Get clipboard data
+            const clipboardData = e.clipboardData || window.clipboardData;
+            const items = clipboardData.items;
+
+            for (let i = 0; i < items.length; i++) {
+                // Check if the item is an image
+                if (items[i].type.indexOf("image") === 0) {
+                    e.preventDefault(); // Stop the browser from handling this paste
+                    
+                    const file = items[i].getAsFile();
+                    insertLocalImage(file); // Re-use the helper from the Drag & Drop step
+                    
+                    return; // Stop processing after finding the image
+                }
+            }
+            // If no image is found, the browser handles the paste normally (for text)
+        });
     }
 
     function handleEditorClick(e) {
