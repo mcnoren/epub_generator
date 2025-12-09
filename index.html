@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EPUB Studio v18 - Gap Remover</title>
+    <title>EPUB Studio v19 - Import Fix</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         /* --- RESET & LAYOUT --- */
@@ -187,21 +187,14 @@
     // --- GAP REMOVER ---
     function removeGaps() {
         const editor = document.getElementById('editor');
-        // Find all blocks that are direct children or paragraphs
         const paragraphs = editor.querySelectorAll('p, div, h1, h2, h3, h4, h5, h6');
         let count = 0;
-        
         paragraphs.forEach(p => {
-            // Check if text content is empty AND no images inside
-            // Using trim to catch &nbsp; or whitespace
             if(p.innerText.trim() === '' && p.querySelector('img') === null) {
                 p.remove();
                 count++;
             }
         });
-
-        // Fallback for raw <br> tags not inside P tags (common in raw contenteditable)
-        // We iterate childNodes to be safe
         const children = Array.from(editor.childNodes);
         children.forEach(node => {
             if (node.nodeName === 'BR') {
@@ -209,15 +202,7 @@
                 count++;
             }
         });
-
         saveCurrent();
-        if(count > 0) {
-            // Quick visual feedback without alerting
-            const btn = document.querySelector('button[onclick="removeGaps()"]');
-            const originalText = btn.innerHTML;
-            btn.innerHTML = `✓ Removed ${count}`;
-            setTimeout(() => btn.innerHTML = originalText, 1500);
-        }
     }
 
     // --- IMAGE MANIPULATION ---
@@ -302,6 +287,19 @@
         }
     }
 
+    // --- SMART PATH RESOLVER ---
+    function resolvePath(base, relative) {
+        const stack = base.split('/');
+        stack.pop(); // Remove filename from base
+        const parts = relative.split('/');
+        for (let i = 0; i < parts.length; i++) {
+            if (parts[i] === ".") continue;
+            if (parts[i] === "..") stack.pop();
+            else stack.push(parts[i]);
+        }
+        return stack.join('/');
+    }
+
     // --- IMPORT ---
     async function importEPUB(input) {
         if (!input.files[0]) return;
@@ -314,6 +312,7 @@
             
             book = { title: "", author: "", css: "", assets: {}, coverPath: null, chapters: [] };
             
+            // 1. Locate OPF
             let opfPath = null;
             const container = content.file("META-INF/container.xml");
             if (container) {
@@ -325,7 +324,7 @@
             if (!opfPath) throw new Error("Invalid EPUB");
 
             const opfTxt = await content.file(opfPath).async("text");
-            const opfDir = opfPath.includes('/') ? opfPath.substring(0, opfPath.lastIndexOf('/')) : '';
+            // opfPath includes filename, we need it for base resolution
             const parser = new DOMParser();
             const xml = parser.parseFromString(opfTxt, "text/xml");
 
@@ -337,18 +336,24 @@
             let coverId = null;
             const metas = xml.getElementsByTagName("meta");
             for(let m of metas) { if(m.getAttribute("name") === "cover") coverId = m.getAttribute("content"); }
+            
+            // 2. Parse Manifest
             const manifest = {};
             Array.from(xml.getElementsByTagName("item")).forEach(item => {
                 const id = item.getAttribute("id");
+                // Decode URI to handle spaces (%20)
                 const href = decodeURI(item.getAttribute("href"));
                 manifest[id] = href;
                 if(item.getAttribute("properties") === "cover-image") coverId = id;
             });
 
+            // 3. Load Assets
             for (let id in manifest) {
                 const href = manifest[id];
-                const fullPath = opfDir ? `${opfDir}/${href}` : href;
+                // Smart Resolve!
+                const fullPath = resolvePath(opfPath, href);
                 const fileObj = findFile(content, fullPath);
+                
                 if (!fileObj) continue;
 
                 if (href.endsWith('.css')) book.css += await fileObj.async("text");
@@ -359,47 +364,72 @@
                 }
             }
 
+            // 4. Load Chapters via Spine
             const spine = Array.from(xml.getElementsByTagName("itemref"));
             for (let i = 0; i < spine.length; i++) {
                 const id = spine[i].getAttribute("idref");
                 const href = manifest[id];
                 if (!href) continue;
                 
-                const fullPath = opfDir ? `${opfDir}/${href}` : href;
+                const fullPath = resolvePath(opfPath, href);
                 const fileObj = findFile(content, fullPath);
-                if (!fileObj) continue;
+                
+                if (fileObj) {
+                    const html = await fileObj.async("text");
+                    const doc = parser.parseFromString(html, "text/html");
+                    processDocImages(doc);
 
-                const html = await fileObj.async("text");
-                const doc = parser.parseFromString(html, "text/html");
+                    book.chapters.push({
+                        id: Date.now() + i,
+                        title: doc.querySelector('title, h1, h2')?.textContent || `Chapter ${i+1}`,
+                        content: doc.body.innerHTML
+                    });
+                }
+            }
 
-                doc.querySelectorAll('img').forEach(img => {
-                    const src = img.getAttribute('src');
-                    if(src) {
-                        const filename = src.split('/').pop();
-                        if(book.assets[filename]) {
-                            img.setAttribute('src', URL.createObjectURL(book.assets[filename]));
-                            img.setAttribute('data-filename', filename);
-                        }
+            // 5. BRUTE FORCE BACKUP (If spine extraction failed)
+            if(book.chapters.length === 0) {
+                // Scan all files in zip
+                for(let filename in content.files) {
+                    if(filename.match(/\.(html|xhtml)$/i) && !filename.includes('__MACOSX')) {
+                        const fileObj = content.file(filename);
+                        const html = await fileObj.async("text");
+                        const doc = parser.parseFromString(html, "text/html");
+                        processDocImages(doc);
+                        book.chapters.push({
+                            id: Date.now() + Math.random(),
+                            title: filename.split('/').pop(),
+                            content: doc.body.innerHTML
+                        });
                     }
-                });
-
-                book.chapters.push({
-                    id: Date.now() + i,
-                    title: doc.querySelector('title, h1, h2')?.textContent || `Chapter ${i+1}`,
-                    content: doc.body.innerHTML
-                });
+                }
             }
 
             if(book.chapters.length > 0) loadChapter(book.chapters[0].id);
-            else addChapter();
+            else addChapter(); // Should rarely happen now
+            
             stopLoader();
         } catch (e) {
             failLoader(e.message);
         }
     }
 
+    function processDocImages(doc) {
+        doc.querySelectorAll('img').forEach(img => {
+            const src = img.getAttribute('src');
+            if(src) {
+                const filename = src.split('/').pop();
+                if(book.assets[filename]) {
+                    img.setAttribute('src', URL.createObjectURL(book.assets[filename]));
+                    img.setAttribute('data-filename', filename);
+                }
+            }
+        });
+    }
+
     function findFile(zip, path) {
         if(zip.file(path)) return zip.file(path);
+        // Case insensitive fallback
         for(let k in zip.files) if(k.toLowerCase() === path.toLowerCase()) return zip.files[k];
         return null;
     }
