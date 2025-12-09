@@ -214,9 +214,16 @@
     let currentId = null;
     let selectedImg = null;
 
+    // --- UPDATED LOGIC ---
+
+    // 1. Initialize Drag & Drop in window.onload
     window.onload = function() {
         addChapter();
         document.execCommand('defaultParagraphSeparator', false, 'p');
+        
+        // Setup Drag and Drop
+        setupDragAndDrop();
+
         if(window.innerWidth <= 768) {
             document.querySelector('.tab.mobile-only').style.display = 'block';
             document.getElementById('mobile-title-display').style.display = 'block';
@@ -225,10 +232,42 @@
         }
     };
 
-    // --- LOGIC ---
-    function insertImageToEditor(input) {
-        if(!input.files[0]) return;
-        const file = input.files[0];
+    // 2. New Drag & Drop Setup Function
+    function setupDragAndDrop() {
+        const editor = document.getElementById('editor');
+
+        editor.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            // Optional: Add a class here to highlight editor (e.g., editor.classList.add('drag-active'))
+        });
+
+        editor.addEventListener('drop', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            // Move cursor to the specific drop location
+            if (document.caretRangeFromPoint) {
+                const range = document.caretRangeFromPoint(e.clientX, e.clientY);
+                if (range) {
+                    const sel = window.getSelection();
+                    sel.removeAllRanges();
+                    sel.addRange(range);
+                }
+            }
+
+            // Handle the dropped files
+            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                const file = e.dataTransfer.files[0];
+                if (file.type.startsWith('image/')) {
+                    insertLocalImage(file);
+                }
+            }
+        });
+    }
+
+    // 3. Refactored Helper: Inserts an image file at the current cursor position
+    function insertLocalImage(file) {
         const filename = "img_" + Date.now() + "." + file.name.split('.').pop();
         book.assets[filename] = file;
         const url = URL.createObjectURL(file);
@@ -238,28 +277,31 @@
         img.setAttribute('data-filename', filename);
         img.setAttribute('alt', '');
         
-        // Default: 30% width, Inline-Block (Allows multiple per row)
+        // Default styles
         img.style.width = "30%";
         img.style.display = "inline-block";
-        img.style.margin = "5px"; // spacing
+        img.style.margin = "5px";
         
-        // --- FIX STARTS HERE ---
         const editor = document.getElementById('editor');
         const sel = document.getSelection();
         
-        // Check if a selection exists AND if it is inside the editor
+        // Insert at cursor if inside editor, otherwise append to end
         if (sel.rangeCount > 0 && editor.contains(sel.getRangeAt(0).commonAncestorContainer)) {
             const range = sel.getRangeAt(0);
             range.insertNode(img);
             range.collapse(false);
         } else {
-            // Fallback: Just append to the end of the editor
             editor.appendChild(img);
         }
-        // --- FIX ENDS HERE ---
         
         saveCurrent();
-        input.value = "";
+    }
+
+    // 4. Updated Toolbar Button Handler (Uses the helper now)
+    function insertImageToEditor(input) {
+        if(!input.files[0]) return;
+        insertLocalImage(input.files[0]);
+        input.value = ""; // Clear input so same file can be selected again if needed
     }
 
     function handleEditorClick(e) {
