@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EPUB Studio v17 - robust Image Tools</title>
+    <title>EPUB Studio v18 - Gap Remover</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         /* --- RESET & LAYOUT --- */
@@ -29,20 +29,13 @@
         
         #main-toolbar { height: 45px; background: #f1f5f9; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; padding: 0 10px; gap: 5px; overflow-x: auto; white-space: nowrap; flex-shrink: 0; }
         .tool-btn { padding: 5px 10px; border: 1px solid transparent; background: white; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500; color: #475569; border-color: #e2e8f0; display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
-        
-        /* --- IMAGE TOOLBAR (NEW) --- */
-        #img-toolbar {
-            position: absolute; display: none; background: #1e293b; padding: 8px; border-radius: 6px;
-            gap: 8px; z-index: 100; box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-            transform: translate(-50%, -100%); margin-top: -10px;
-        }
+        .tool-btn:active { background: #e2e8f0; }
+
+        /* --- IMAGE TOOLBAR --- */
+        #img-toolbar { position: absolute; display: none; background: #1e293b; padding: 8px; border-radius: 6px; gap: 8px; z-index: 100; box-shadow: 0 4px 12px rgba(0,0,0,0.2); transform: translate(-50%, -100%); margin-top: -10px; }
         #img-toolbar.visible { display: flex; }
-        #img-toolbar::after {
-            content: ''; position: absolute; bottom: -6px; left: 50%; transform: translateX(-50%);
-            border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 6px solid #1e293b;
-        }
+        #img-toolbar::after { content: ''; position: absolute; bottom: -6px; left: 50%; transform: translateX(-50%); border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 6px solid #1e293b; }
         .img-action { background: #334155; color: white; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; }
-        .img-action:hover { background: #475569; }
         .img-action.danger { background: #ef4444; }
 
         main { display: flex; flex: 1; overflow: hidden; position: relative; }
@@ -69,21 +62,8 @@
         #editor { flex: 1; outline: none; font-family: 'Georgia', serif; font-size: 18px; line-height: 1.5; }
         #editor p { margin: 0; padding: 0; min-height: 1em; }
         #editor:empty:before { content: attr(placeholder); color: #94a3b8; pointer-events: none; display: block; }
-
-        /* HIGH RES FIX: Strict constraints on images */
-        #editor img { 
-            max-width: 100% !important; 
-            height: auto !important; 
-            display: block; 
-            cursor: pointer;
-            box-sizing: border-box;
-        }
-        
-        /* Selected state for image */
-        #editor img.selected {
-            outline: 3px solid #2563eb;
-            box-shadow: 0 0 10px rgba(37, 99, 235, 0.3);
-        }
+        #editor img { max-width: 100% !important; height: auto !important; display: block; cursor: pointer; box-sizing: border-box; }
+        #editor img.selected { outline: 3px solid #2563eb; box-shadow: 0 0 10px rgba(37, 99, 235, 0.3); }
 
         @media (max-width: 768px) {
             #mobile-menu-btn { display: block; }
@@ -140,6 +120,7 @@
     <button class="tool-btn" onclick="format('italic')"><i>I</i> Italic</button>
     <button class="tool-btn" onclick="format('formatBlock','h2')">Header</button>
     <button class="tool-btn" onclick="format('formatBlock','p')">Text</button>
+    <button class="tool-btn" onclick="removeGaps()" title="Removes empty lines">✂ Remove Gaps</button>
     <label class="tool-btn">
         🖼 Image
         <input type="file" accept="image/*" style="display:none" onchange="insertImageToEditor(this)">
@@ -203,25 +184,54 @@
         }
     };
 
+    // --- GAP REMOVER ---
+    function removeGaps() {
+        const editor = document.getElementById('editor');
+        // Find all blocks that are direct children or paragraphs
+        const paragraphs = editor.querySelectorAll('p, div, h1, h2, h3, h4, h5, h6');
+        let count = 0;
+        
+        paragraphs.forEach(p => {
+            // Check if text content is empty AND no images inside
+            // Using trim to catch &nbsp; or whitespace
+            if(p.innerText.trim() === '' && p.querySelector('img') === null) {
+                p.remove();
+                count++;
+            }
+        });
+
+        // Fallback for raw <br> tags not inside P tags (common in raw contenteditable)
+        // We iterate childNodes to be safe
+        const children = Array.from(editor.childNodes);
+        children.forEach(node => {
+            if (node.nodeName === 'BR') {
+                node.remove();
+                count++;
+            }
+        });
+
+        saveCurrent();
+        if(count > 0) {
+            // Quick visual feedback without alerting
+            const btn = document.querySelector('button[onclick="removeGaps()"]');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = `✓ Removed ${count}`;
+            setTimeout(() => btn.innerHTML = originalText, 1500);
+        }
+    }
+
     // --- IMAGE MANIPULATION ---
     function handleEditorClick(e) {
-        // Deselect previous
         if(selectedImg && e.target !== selectedImg) {
             selectedImg.classList.remove('selected');
             selectedImg = null;
             document.getElementById('img-toolbar').classList.remove('visible');
         }
-
-        // Select new if image
         if(e.target.tagName === 'IMG') {
             selectedImg = e.target;
             selectedImg.classList.add('selected');
-            
-            // Position Toolbar
             const toolbar = document.getElementById('img-toolbar');
             const rect = selectedImg.getBoundingClientRect();
-            
-            // Calculate relative to viewport
             toolbar.style.top = (rect.top + window.scrollY) + 'px';
             toolbar.style.left = (rect.left + (rect.width/2)) + 'px';
             toolbar.classList.add('visible');
@@ -251,7 +261,7 @@
         saveCurrent();
     }
 
-    // --- GENERAL UI ---
+    // --- UI ---
     function toggleSidebar() {
         document.getElementById('sidebar').classList.toggle('open');
         document.getElementById('sidebar-overlay').classList.toggle('active');
@@ -422,7 +432,6 @@
         const img = document.createElement('img');
         img.src = url;
         img.setAttribute('data-filename', filename);
-        // Force styling constraints immediately
         img.style.maxWidth = "100%";
         img.style.display = "block";
         img.style.margin = "10px auto";
@@ -506,7 +515,6 @@
                     assetManifest += `<item id="${id}" href="images/${name}" media-type="${mime}"${properties}/>\n`;
                 }
 
-                // CSS Update: Zero margins for paragraphs
                 const css = book.css || `body{padding:5%; line-height:1.5;} p{margin:0; padding:0;} img{max-width:100%; height:auto;}`;
                 oebps.file("style.css", css);
 
@@ -525,9 +533,9 @@
                         const fname = img.getAttribute('data-filename');
                         if(fname && book.assets[fname]) img.setAttribute('src', `images/${fname}`);
                         img.removeAttribute('data-filename');
-                        // Ensure styles are inline for export
                         if(!img.style.maxWidth) img.style.maxWidth = "100%";
-                        img.classList.remove('selected'); // Clean UI classes
+                        img.classList.remove('selected');
+                        if(!img.hasAttribute('alt')) img.setAttribute('alt', '');
                     });
 
                     let xmlBody = serializer.serializeToString(doc.body);
