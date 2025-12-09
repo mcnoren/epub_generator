@@ -243,14 +243,20 @@
         img.style.display = "inline-block";
         img.style.margin = "5px"; // spacing
         
+        // --- FIX STARTS HERE ---
+        const editor = document.getElementById('editor');
         const sel = document.getSelection();
-        if (sel.rangeCount > 0) {
+        
+        // Check if a selection exists AND if it is inside the editor
+        if (sel.rangeCount > 0 && editor.contains(sel.getRangeAt(0).commonAncestorContainer)) {
             const range = sel.getRangeAt(0);
             range.insertNode(img);
             range.collapse(false);
         } else {
-            document.getElementById('editor').appendChild(img);
+            // Fallback: Just append to the end of the editor
+            editor.appendChild(img);
         }
+        // --- FIX ENDS HERE ---
         
         saveCurrent();
         input.value = "";
