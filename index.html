@@ -227,7 +227,8 @@
         document.execCommand('defaultParagraphSeparator', false, 'p');
         
         setupDragAndDrop(); // Added in previous step
-        setupPaste();       // <--- NEW: Add this line
+        setupPaste();
+        setupTabKey()
 
         if(window.innerWidth <= 768) {
             document.querySelector('.tab.mobile-only').style.display = 'block';
@@ -236,7 +237,17 @@
             document.querySelectorAll('.desktop-text').forEach(e=>e.style.display='none');
         }
     };
-
+    
+    function setupTabKey() {
+        document.getElementById('editor').addEventListener('keydown', function(e) {
+            if (e.key === 'Tab') {
+                e.preventDefault(); // Stop focus change
+                // Insert 4 non-breaking spaces
+                document.execCommand('insertHTML', false, '&nbsp;&nbsp;&nbsp;&nbsp;');
+            }
+        });
+    }
+    
     // 2. New Drag & Drop Setup Function
     function setupDragAndDrop() {
         const editor = document.getElementById('editor');
@@ -679,9 +690,14 @@
                     assetManifest += `<item id="${id}" href="images/${name}" media-type="${mime}"${properties}/>\n`;
                 }
 
-                // We add 'text-indent: 1.5em;' to the paragraph rules.
-                const css = book.css || `body{padding:5%; line-height:1.5;} p{margin:0; padding:0; text-indent: 1.5em;} img{max-width:100%; height:auto;}`;
-                oebps.file("style.css", css);
+                // 1. Get existing CSS or use default
+                let baseCss = book.css || `body{padding:5%; line-height:1.5;} p{margin:0; padding:0;} img{max-width:100%; height:auto;}`;
+                
+                // 2. FORCE indentation by appending this rule to the end
+                // This ensures it overrides previous rules or applies if missing
+                const finalCss = baseCss + "\n p { text-indent: 1.5em; }";
+                
+                oebps.file("style.css", finalCss);
 
                 let manifest = `<item id="css" href="style.css" media-type="text/css"/>\n` + assetManifest;
                 let spine = "";
