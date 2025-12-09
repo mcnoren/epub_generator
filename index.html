@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EPUB Studio v26 - Layout & Undo</title>
+    <title>EPUB Studio v27 - Perfect Insertion</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         /* --- RESET & BASICS --- */
@@ -11,7 +11,7 @@
         html, body { margin: 0; padding: 0; height: 100dvh; overflow: hidden; background: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
         body { display: flex; flex-direction: column; }
 
-        /* --- UI OVERLAY (LOADER) --- */
+        /* --- LOADER --- */
         #loader-overlay { position: fixed; inset: 0; background: rgba(255,255,255,0.98); z-index: 9999; display: none; flex-direction: column; justify-content: center; align-items: center; }
         #loader-overlay.active { display: flex; }
         .spinner { width: 40px; height: 40px; border: 4px solid #e2e8f0; border-top: 4px solid #2563eb; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px; }
@@ -35,6 +35,646 @@
             overflow-x: auto; white-space: nowrap; flex-shrink: 0; z-index: 40; 
         }
         .tool-btn { 
+            padding: 5px 10px; border: 1px solid transparent; background: white; border-radius: 4px; 
+            cursor: pointer; font-size: 13px; font-weight: 500; color: #475569; border-color: #e2e8f0; 
+            display: flex; align-items: center; gap: 5px; flex-shrink: 0; 
+        }
+        .tool-btn:active { background: #e2e8f0; }
+        .tool-btn.danger { color: #dc2626; border-color: #fecaca; background: #fee2e2; margin-left: auto; }
+
+        /* --- FLOATING IMAGE MENU --- */
+        #img-toolbar { 
+            position: absolute; display: none; background: #1e293b; padding: 10px; 
+            border-radius: 8px; gap: 10px; z-index: 100; box-shadow: 0 4px 15px rgba(0,0,0,0.3); 
+            transform: translate(-50%, -100%); margin-top: -10px; align-items: center;
+        }
+        #img-toolbar.visible { display: flex; }
+        #img-toolbar::after { content: ''; position: absolute; bottom: -6px; left: 50%; transform: translateX(-50%); border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 6px solid #1e293b; }
+        .img-action { background: #334155; color: white; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+        .img-action:hover { background: #475569; }
+        .img-action.danger { background: #ef4444; }
+        .slider-wrapper { display: flex; align-items: center; gap: 8px; color: white; font-size: 11px; font-weight: bold; }
+        input[type=range] { width: 100px; cursor: pointer; accent-color: #3b82f6; }
+
+        /* --- LAYOUT --- */
+        main { display: flex; flex: 1; overflow: hidden; position: relative; }
+        aside { width: 250px; background: white; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; flex-shrink: 0; z-index: 40; transition: transform 0.3s ease; }
+        #sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 30; }
+        
+        .sidebar-tabs { display: flex; border-bottom: 1px solid #e2e8f0; }
+        .tab { flex: 1; padding: 10px; text-align: center; cursor: pointer; font-size: 12px; font-weight: 600; color: #64748b; background: #f8fafc; }
+        .tab.active { background: white; color: #2563eb; border-bottom: 2px solid #2563eb; }
+        .sidebar-content { flex: 1; overflow-y: auto; display: none; }
+        .sidebar-content.active { display: block; }
+        
+        .chapter-list { list-style: none; padding: 0; margin: 0; }
+        .chapter-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 15px; border-bottom: 1px solid #f1f5f9; cursor: pointer; font-size: 14px; }
+        .chapter-item span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+        .chapter-item.active { background: #eff6ff; color: #2563eb; border-left: 3px solid #2563eb; font-weight: 600; }
+        .delete-icon { opacity: 0.4; padding: 4px 8px; font-size: 16px; color: #dc2626; cursor: pointer; transition: opacity 0.2s; }
+        .delete-icon:hover { opacity: 1; background: #fee2e2; border-radius: 4px; }
+
+        #cover-img { max-width: 100%; height: auto; border: 1px solid #e2e8f0; margin-bottom: 10px; min-height: 140px; background: #f1f5f9; object-fit: contain; }
+
+        /* --- EDITOR --- */
+        .editor-area { flex: 1; background: #cbd5e1; overflow-y: auto; padding: 30px; display: block; text-align: center; -webkit-overflow-scrolling: touch; }
+        .paper { width: 100%; max-width: 800px; min-height: 100%; height: fit-content; background: white; box-shadow: 0 4px 6px rgba(0,0,0,0.05); padding: 50px; margin: 0 auto; display: flex; flex-direction: column; text-align: left; position: relative; }
+        #chapter-title { font-size: 24px; font-weight: 700; border: none; outline: none; width: 100%; margin-bottom: 15px; font-family: serif; border-bottom: 1px solid transparent; }
+        #editor { flex: 1; outline: none; font-family: 'Georgia', serif; font-size: 18px; line-height: 1.5; }
+        #editor p { margin: 0; padding: 0; min-height: 1em; }
+        #editor:empty:before { content: attr(placeholder); color: #94a3b8; pointer-events: none; display: block; }
+        
+        #editor img { 
+            display: inline-block; vertical-align: top; margin: 5px; cursor: pointer; 
+            box-sizing: border-box; object-fit: contain; width: 30%; max-width: 100%;
+        }
+        #editor img.selected { outline: 3px solid #2563eb; box-shadow: 0 0 10px rgba(37, 99, 235, 0.3); }
+
+        @media (max-width: 768px) {
+            #mobile-menu-btn { display: block; }
+            .inputs { display: none; }
+            aside { position: absolute; top: 0; left: 0; height: 100%; width: 80%; max-width: 280px; transform: translateX(-100%); box-shadow: 2px 0 10px rgba(0,0,0,0.1); }
+            aside.open { transform: translateX(0); }
+            #sidebar-overlay.active { display: block; }
+            .editor-area { padding: 0; background: white; }
+            .paper { box-shadow: none; padding: 20px; min-height: 100dvh; }
+            .tab.mobile-only { display: block !important; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="loader-overlay">
+    <div class="spinner"></div>
+    <div id="loader-msg">Initializing...</div>
+    <button id="loader-close" onclick="document.getElementById('loader-overlay').classList.remove('active')">Close</button>
+</div>
+
+<div id="img-toolbar">
+    <div class="slider-wrapper">
+        <span>Size</span>
+        <input type="range" min="10" max="100" value="30" oninput="imgSlider(this.value)">
+    </div>
+    <div style="width:1px; height:20px; background:#475569; margin:0 4px;"></div>
+    <button class="img-action" onclick="imgFloat('left')">Left</button>
+    <button class="img-action" onclick="imgFloat('none')">Inline</button>
+    <button class="img-action" onclick="imgFloat('right')">Right</button>
+    <div style="width:1px; height:20px; background:#475569; margin:0 4px;"></div>
+    <button class="img-action danger" onclick="imgDelete()">Delete</button>
+</div>
+
+<div id="sidebar-overlay" onclick="toggleSidebar()"></div>
+
+<header>
+    <button id="mobile-menu-btn" onclick="toggleSidebar()">☰</button>
+    <div class="inputs">
+        <input type="text" id="meta-title" placeholder="Book Title" oninput="syncMeta('title', this.value)">
+        <input type="text" id="meta-author" placeholder="Author" oninput="syncMeta('author', this.value)">
+    </div>
+    <div style="flex:1; font-weight:bold; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:none;" id="mobile-title-display">Untitled Book</div>
+    <div class="actions">
+        <label class="btn">
+            📂 <span class="desktop-text">Import</span>
+            <input type="file" accept=".epub" onchange="importEPUB(this)" style="display:none">
+        </label>
+        <button class="btn btn-primary" onclick="exportEPUB()">⬇ <span class="desktop-text">Export</span></button>
+    </div>
+</header>
+
+<div id="main-toolbar">
+    <button class="tool-btn" onclick="format('undo')" title="Undo">↶ Undo</button>
+    <button class="tool-btn" onclick="format('redo')" title="Redo">↷ Redo</button>
+    <div style="width:1px; height:20px; background:#e2e8f0; margin:0 5px;"></div>
+    <button class="tool-btn" onclick="format('bold')"><b>B</b></button>
+    <button class="tool-btn" onclick="format('italic')"><i>I</i></button>
+    <button class="tool-btn" onclick="format('formatBlock','h2')">Header</button>
+    <button class="tool-btn" onclick="format('formatBlock','p')">Text</button>
+    <button class="tool-btn" onclick="removeGaps()" title="Removes empty lines">✂ Gaps</button>
+    <button class="tool-btn" onclick="triggerImageUpload()">🖼 Image</button>
+    <button class="tool-btn" onclick="format('removeFormat')">Clean</button>
+    <button class="tool-btn danger" onclick="clearAll()">🗑 Clear All</button>
+</div>
+
+<main>
+    <aside id="sidebar">
+        <div class="sidebar-tabs">
+            <div class="tab active" onclick="switchTab('chapters')">Chapters</div>
+            <div class="tab" onclick="switchTab('cover')">Cover</div>
+            <div class="tab mobile-only" onclick="switchTab('settings')" style="display:none">Meta</div>
+        </div>
+
+        <div id="tab-chapters" class="sidebar-content active">
+            <ul class="chapter-list" id="chapter-list"></ul>
+            <div style="padding:15px; border-top:1px solid #e2e8f0;">
+                <button class="btn" style="width:100%; justify-content:center;" onclick="addChapter()">+ New Chapter</button>
+            </div>
+        </div>
+
+        <div id="tab-cover" class="sidebar-content">
+            <div style="padding:20px; text-align:center;">
+                <img id="cover-img" src="" alt="No Cover">
+                <label class="btn" style="justify-content:center;">
+                    📷 Upload Cover
+                    <input type="file" accept="image/*" onchange="updateCover(this)" style="display:none">
+                </label>
+            </div>
+        </div>
+
+        <div id="tab-settings" class="sidebar-content" style="padding:20px">
+            <h4>Book Details</h4>
+            <input type="text" id="mobile-meta-title" placeholder="Book Title" style="width:100%; padding:10px; margin-bottom:10px; border:1px solid #ccc; border-radius:4px;" oninput="syncMeta('title', this.value)">
+            <input type="text" id="mobile-meta-author" placeholder="Author" style="width:100%; padding:10px; border:1px solid #ccc; border-radius:4px;" oninput="syncMeta('author', this.value)">
+        </div>
+    </aside>
+
+    <div class="editor-area">
+        <div class="paper" id="paper-container">
+            <input type="text" id="chapter-title" placeholder="Chapter Title" oninput="saveCurrent()">
+            <div id="editor" contenteditable="true" placeholder="Start typing..." oninput="saveCurrent()" onclick="handleEditorClick(event)"></div>
+        </div>
+    </div>
+</main>
+
+<input type="file" id="hidden-image-input" accept="image/*" style="display:none" onchange="finishImageUpload(this)">
+
+<script>
+    let book = { title: "", author: "", css: "", assets: {}, coverPath: null, chapters: [] };
+    let currentId = null;
+    let selectedImg = null;
+    let savedSelection = null; // Stores cursor position
+
+    window.onload = function() {
+        addChapter();
+        document.execCommand('defaultParagraphSeparator', false, 'p');
+        if(window.innerWidth <= 768) {
+            document.querySelector('.tab.mobile-only').style.display = 'block';
+            document.getElementById('mobile-title-display').style.display = 'block';
+            document.querySelector('.inputs').style.display = 'none';
+            document.querySelectorAll('.desktop-text').forEach(e=>e.style.display='none');
+        }
+    };
+
+    // --- CURSOR TRACKING ---
+    // We save the cursor position before the file dialog opens
+    function saveSelection() {
+        const sel = window.getSelection();
+        if (sel.getRangeAt && sel.rangeCount) {
+            savedSelection = sel.getRangeAt(0);
+        } else {
+            savedSelection = null;
+        }
+    }
+
+    function restoreSelection() {
+        if (savedSelection) {
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(savedSelection);
+        } else {
+            // Fallback to end of editor
+            document.getElementById('editor').focus();
+        }
+    }
+
+    // --- IMAGE TRIGGER ---
+    function triggerImageUpload() {
+        saveSelection(); // Remember where the cursor is
+        document.getElementById('hidden-image-input').click();
+    }
+
+    function finishImageUpload(input) {
+        if(!input.files[0]) return;
+        const file = input.files[0];
+        const filename = "img_" + Date.now() + "." + file.name.split('.').pop();
+        book.assets[filename] = file;
+        const url = URL.createObjectURL(file);
+        
+        restoreSelection(); // Put cursor back
+
+        const img = document.createElement('img');
+        img.src = url;
+        img.setAttribute('data-filename', filename);
+        img.setAttribute('alt', '');
+        img.style.width = "30%";
+        img.style.display = "inline-block";
+        img.style.margin = "5px";
+        
+        const sel = window.getSelection();
+        if (sel.rangeCount > 0) {
+            const range = sel.getRangeAt(0);
+            range.insertNode(img);
+            range.collapse(false);
+        } else {
+            document.getElementById('editor').appendChild(img);
+        }
+        
+        saveCurrent();
+        input.value = ""; // Reset
+    }
+
+    // --- IMAGE MANIPULATION ---
+    function handleEditorClick(e) {
+        if(selectedImg && e.target !== selectedImg) {
+            selectedImg.classList.remove('selected');
+            selectedImg = null;
+            document.getElementById('img-toolbar').classList.remove('visible');
+        }
+        if(e.target.tagName === 'IMG') {
+            selectedImg = e.target;
+            selectedImg.classList.add('selected');
+            
+            let w = selectedImg.style.width || "30%";
+            document.querySelector('input[type=range]').value = parseInt(w);
+
+            const toolbar = document.getElementById('img-toolbar');
+            const rect = selectedImg.getBoundingClientRect();
+            toolbar.style.top = (rect.top + window.scrollY) + 'px';
+            toolbar.style.left = (rect.left + (rect.width/2)) + 'px';
+            toolbar.classList.add('visible');
+        }
+    }
+
+    function imgSlider(val) {
+        if(!selectedImg) return;
+        selectedImg.style.width = val + "%";
+        saveCurrent();
+    }
+
+    function imgFloat(type) {
+        if(!selectedImg) return;
+        if(type === 'left') { selectedImg.style.float = 'left'; selectedImg.style.margin = '0 10px 5px 0'; }
+        else if(type === 'right') { selectedImg.style.float = 'right'; selectedImg.style.margin = '0 0 5px 10px'; }
+        else { selectedImg.style.float = 'none'; selectedImg.style.display = 'inline-block'; selectedImg.style.margin = '5px'; }
+        saveCurrent();
+    }
+
+    function imgDelete() {
+        if(!selectedImg) return;
+        selectedImg.remove();
+        document.getElementById('img-toolbar').classList.remove('visible');
+        selectedImg = null;
+        saveCurrent();
+    }
+
+    // --- STANDARD UI ---
+    function deleteChapter(id, e) {
+        if(e) e.stopPropagation();
+        if(!confirm("Delete chapter?")) return;
+        book.chapters = book.chapters.filter(c => c.id !== id);
+        if(currentId === id) {
+            if(book.chapters.length > 0) loadChapter(book.chapters[0].id);
+            else addChapter();
+        } else {
+            renderList();
+        }
+    }
+
+    function clearAll() {
+        if(!confirm("⚠️ Delete entire book? Cannot undo.")) return;
+        book = { title: "", author: "", css: "", assets: {}, coverPath: null, chapters: [] };
+        syncMeta('title', ''); syncMeta('author', '');
+        renderCoverPreview();
+        addChapter();
+    }
+
+    function removeGaps() {
+        const editor = document.getElementById('editor');
+        editor.querySelectorAll('p, div, h1, h2, h3').forEach(p => {
+            if(p.innerText.trim() === '' && p.querySelector('img') === null) p.remove();
+        });
+        Array.from(editor.childNodes).forEach(node => { if(node.nodeName === 'BR') node.remove(); });
+        saveCurrent();
+    }
+
+    function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); document.getElementById('sidebar-overlay').classList.toggle('active'); }
+    function startLoader(msg) { document.getElementById('loader-overlay').classList.add('active'); document.getElementById('loader-msg').innerText = msg; document.querySelector('.spinner').style.display='block'; document.getElementById('loader-close').style.display='none'; }
+    function failLoader(err) { document.getElementById('loader-msg').innerText = "Error: "+err; document.querySelector('.spinner').style.display='none'; document.getElementById('loader-close').style.display='block'; }
+    function stopLoader() { document.getElementById('loader-overlay').classList.remove('active'); }
+    function format(cmd, val) { document.execCommand(cmd, false, val); }
+
+    function switchTab(tab) {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.sidebar-content').forEach(c => c.classList.remove('active'));
+        let idx = tab === 'chapters' ? 0 : (tab === 'cover' ? 1 : 2);
+        document.querySelectorAll('.tab')[idx].classList.add('active');
+        document.getElementById('tab-' + tab).classList.add('active');
+        if(tab==='cover') renderCoverPreview();
+    }
+
+    function syncMeta(field, val) {
+        if(field === 'title') {
+            document.getElementById('meta-title').value = val;
+            document.getElementById('mobile-meta-title').value = val;
+            document.getElementById('mobile-title-display').innerText = val || "Untitled Book";
+            book.title = val;
+        } else {
+            document.getElementById('meta-author').value = val;
+            document.getElementById('mobile-meta-author').value = val;
+            book.author = val;
+        }
+    }
+
+    // --- IMPORT & EXPORT ---
+    function resolvePath(base, relative) {
+        const stack = base.split('/'); stack.pop();
+        const parts = relative.split('/');
+        for(let i=0; i<parts.length; i++) {
+            if(parts[i]===".") continue;
+            if(parts[i]==="..") stack.pop();
+            else stack.push(parts[i]);
+        }
+        return stack.join('/');
+    }
+
+    async function importEPUB(input) {
+        if (!input.files[0]) return;
+        startLoader("Importing...");
+        if(window.innerWidth <= 768) toggleSidebar();
+
+        try {
+            const zip = new JSZip();
+            const content = await zip.loadAsync(input.files[0]);
+            book = { title: "", author: "", css: "", assets: {}, coverPath: null, chapters: [] };
+            
+            let opfPath = null;
+            const container = content.file("META-INF/container.xml");
+            if (container) {
+                const txt = await container.async("text");
+                const match = txt.match(/full-path="([^"]+)"/);
+                if (match) opfPath = match[1];
+            }
+            if (!opfPath) opfPath = Object.keys(content.files).find(f => f.endsWith('.opf'));
+            if (!opfPath) throw new Error("Invalid EPUB");
+
+            const opfTxt = await content.file(opfPath).async("text");
+            const parser = new DOMParser();
+            const xml = parser.parseFromString(opfTxt, "text/xml");
+
+            const title = xml.getElementsByTagName("dc:title")[0]?.textContent || "Untitled";
+            const author = xml.getElementsByTagName("dc:creator")[0]?.textContent || "Unknown";
+            syncMeta('title', title);
+            syncMeta('author', author);
+
+            let coverId = null;
+            const metas = xml.getElementsByTagName("meta");
+            for(let m of metas) { if(m.getAttribute("name") === "cover") coverId = m.getAttribute("content"); }
+            
+            const manifest = {};
+            Array.from(xml.getElementsByTagName("item")).forEach(item => {
+                const id = item.getAttribute("id");
+                const href = decodeURI(item.getAttribute("href"));
+                manifest[id] = href;
+                if(item.getAttribute("properties") === "cover-image") coverId = id;
+            });
+
+            for (let id in manifest) {
+                const href = manifest[id];
+                const fullPath = resolvePath(opfPath, href);
+                const fileObj = findFile(content, fullPath);
+                if (!fileObj) continue;
+
+                if (href.endsWith('.css')) book.css += await fileObj.async("text");
+                if (href.match(/\.(jpg|jpeg|png|gif|svg|webp)$/i)) {
+                    const filename = href.split('/').pop();
+                    book.assets[filename] = await fileObj.async("blob");
+                    if (id === coverId) book.coverPath = filename;
+                }
+            }
+
+            let tocMap = {};
+            const spineTag = xml.getElementsByTagName("spine")[0];
+            const tocId = spineTag.getAttribute("toc");
+            if (tocId && manifest[tocId]) {
+                const tocHref = manifest[tocId];
+                const fullTocPath = resolvePath(opfPath, tocHref);
+                const tocFile = findFile(content, fullTocPath);
+                if (tocFile) {
+                    const tocTxt = await tocFile.async("text");
+                    const tocXml = parser.parseFromString(tocTxt, "text/xml");
+                    Array.from(tocXml.getElementsByTagName("navPoint")).forEach(np => {
+                        const label = np.getElementsByTagName("text")[0]?.textContent;
+                        let src = np.getElementsByTagName("content")[0]?.getAttribute("src");
+                        if (src && label) {
+                            src = decodeURI(src);
+                            if(src.includes('#')) src = src.split('#')[0];
+                            tocMap[src] = label.trim();
+                        }
+                    });
+                }
+            }
+
+            const spine = Array.from(xml.getElementsByTagName("itemref"));
+            for (let i = 0; i < spine.length; i++) {
+                const id = spine[i].getAttribute("idref");
+                const href = manifest[id];
+                if (!href) continue;
+                
+                const fullPath = resolvePath(opfPath, href);
+                const fileObj = findFile(content, fullPath);
+                
+                if (fileObj) {
+                    const html = await fileObj.async("text");
+                    const doc = parser.parseFromString(html, "text/html");
+                    processDocImages(doc);
+
+                    let chTitle = "";
+                    if (tocMap[href]) chTitle = tocMap[href];
+                    else {
+                        const simpleName = href.split('/').pop();
+                        if (tocMap[simpleName]) chTitle = tocMap[simpleName];
+                    }
+                    if (!chTitle) {
+                        const h1 = doc.querySelector('h1');
+                        if (h1 && h1.innerText.trim()) chTitle = h1.innerText.trim();
+                    }
+                    if (!chTitle) chTitle = `Chapter ${i+1}`;
+
+                    book.chapters.push({
+                        id: Date.now() + i,
+                        title: chTitle,
+                        content: doc.body.innerHTML
+                    });
+                }
+            }
+
+            if(book.chapters.length > 0) loadChapter(book.chapters[0].id);
+            else addChapter();
+            stopLoader();
+        } catch (e) {
+            failLoader(e.message);
+        }
+    }
+
+    function processDocImages(doc) {
+        doc.querySelectorAll('img').forEach(img => {
+            const src = img.getAttribute('src');
+            if(src) {
+                const filename = src.split('/').pop();
+                if(book.assets[filename]) {
+                    img.setAttribute('src', URL.createObjectURL(book.assets[filename]));
+                    img.setAttribute('data-filename', filename);
+                    img.style.width = "30%";
+                    img.style.display = "inline-block";
+                }
+            }
+        });
+    }
+
+    function findFile(zip, path) {
+        if(zip.file(path)) return zip.file(path);
+        for(let k in zip.files) if(k.toLowerCase() === path.toLowerCase()) return zip.files[k];
+        const simpleName = path.split('/').pop();
+        for(let k in zip.files) if(k.split('/').pop().toLowerCase() === simpleName.toLowerCase()) return zip.files[k];
+        return null;
+    }
+
+    function renderCoverPreview() {
+        const img = document.getElementById('cover-img');
+        if(book.coverPath && book.assets[book.coverPath]) {
+            img.src = URL.createObjectURL(book.assets[book.coverPath]);
+        } else {
+            img.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='150' viewBox='0 0 100 150'%3E%3Crect width='100' height='150' fill='%23e2e8f0'/%3E%3Ctext x='50' y='75' text-anchor='middle' fill='%2364748b' font-size='12'%3ENo Cover%3C/text%3E%3C/svg%3E";
+        }
+    }
+
+    function updateCover(input) {
+        if(!input.files[0]) return;
+        const file = input.files[0];
+        const filename = "cover_" + Date.now() + "." + file.name.split('.').pop();
+        book.assets[filename] = file;
+        book.coverPath = filename;
+        renderCoverPreview();
+    }
+
+    function renderList() {
+        const list = document.getElementById('chapter-list');
+        list.innerHTML = '';
+        book.chapters.forEach((c, i) => {
+            const li = document.createElement('li');
+            li.className = `chapter-item ${c.id === currentId ? 'active' : ''}`;
+            const span = document.createElement('span');
+            span.innerText = c.title || `Chapter ${i+1}`;
+            li.appendChild(span);
+            const del = document.createElement('div');
+            del.innerHTML = '🗑';
+            del.className = 'delete-icon';
+            del.onclick = (e) => deleteChapter(c.id, e);
+            li.appendChild(del);
+            li.onclick = () => {
+                loadChapter(c.id);
+                if(window.innerWidth <= 768) toggleSidebar();
+            };
+            list.appendChild(li);
+        });
+    }
+
+    function loadChapter(id) {
+        currentId = id;
+        const c = book.chapters.find(x => x.id === id);
+        document.getElementById('chapter-title').value = c.title;
+        document.getElementById('editor').innerHTML = c.content;
+        renderList();
+    }
+
+    function saveCurrent() {
+        const c = book.chapters.find(x => x.id === currentId);
+        if(c) {
+            c.title = document.getElementById('chapter-title').value;
+            c.content = document.getElementById('editor').innerHTML;
+            const activeSpan = document.querySelector('.chapter-item.active span');
+            if(activeSpan) activeSpan.innerText = c.title;
+        }
+        book.title = document.getElementById('meta-title').value;
+        book.author = document.getElementById('meta-author').value;
+    }
+
+    function addChapter() {
+        const id = Date.now();
+        book.chapters.push({ id, title: "New Chapter", content: "" });
+        loadChapter(id);
+        if(window.innerWidth <= 768) toggleSidebar();
+    }
+
+    async function exportEPUB() {
+        book.title = document.getElementById('meta-title').value || "Untitled";
+        book.author = document.getElementById('meta-author').value || "Unknown";
+
+        startLoader("Exporting...");
+        setTimeout(async () => {
+            try {
+                const zip = new JSZip();
+                const uuid = 'urn:uuid:' + crypto.randomUUID();
+
+                zip.file("mimetype", "application/epub+zip", { compression: "STORE" });
+                zip.folder("META-INF").file("container.xml", `<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>`);
+
+                const oebps = zip.folder("OEBPS");
+                const imgFolder = oebps.folder("images");
+
+                let assetManifest = "";
+                for(let name in book.assets) {
+                    imgFolder.file(name, book.assets[name]);
+                    const mime = name.endsWith('png') ? 'image/png' : 'image/jpeg';
+                    let id = "img_" + name.replace(/[^a-z0-9]/gi, '');
+                    if(name === book.coverPath) id = "cover-image";
+                    let properties = (name === book.coverPath) ? ' properties="cover-image"' : '';
+                    assetManifest += `<item id="${id}" href="images/${name}" media-type="${mime}"${properties}/>\n`;
+                }
+
+                const css = book.css || `body{padding:5%; line-height:1.5;} p{margin:0; padding:0;} img{max-width:100%; height:auto;}`;
+                oebps.file("style.css", css);
+
+                let manifest = `<item id="css" href="style.css" media-type="text/css"/>\n` + assetManifest;
+                let spine = "";
+                let nav = "";
+                const serializer = new XMLSerializer();
+
+                book.chapters.forEach((ch, i) => {
+                    const fn = `ch${i+1}.xhtml`;
+                    const id = `c${i+1}`;
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(ch.content || "<p></p>", "text/html");
+
+                    doc.querySelectorAll('img').forEach(img => {
+                        const fname = img.getAttribute('data-filename');
+                        if(fname && book.assets[fname]) img.setAttribute('src', `images/${fname}`);
+                        img.removeAttribute('data-filename');
+                        if(!img.hasAttribute('alt')) img.setAttribute('alt', '');
+                        img.classList.remove('selected');
+                    });
+
+                    let xmlBody = serializer.serializeToString(doc.body);
+                    xmlBody = xmlBody.replace(/^<body[^>]*>/i, '').replace(/<\/body>$/i, '');
+
+                    const xhtml = `<?xml version="1.0" encoding="utf-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>${ch.title}</title><link rel="stylesheet" href="style.css"/></head><body><h2>${ch.title}</h2>${xmlBody}</body></html>`;
+
+                    oebps.file(fn, xhtml);
+                    manifest += `<item id="${id}" href="${fn}" media-type="application/xhtml+xml"/>\n`;
+                    spine += `<itemref idref="${id}"/>\n`;
+                    nav += `<navPoint id="n${i}" playOrder="${i}"><navLabel><text>${ch.title}</text></navLabel><content src="${fn}"/></navPoint>`;
+                });
+
+                let coverMeta = book.coverPath ? `<meta name="cover" content="cover-image" />` : "";
+                const opf = `<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" unique-identifier="uid" version="3.0"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>${book.title}</dc:title><dc:creator>${book.author}</dc:creator><dc:identifier id="uid">${uuid}</dc:identifier><dc:language>en</dc:language>${coverMeta}</metadata><manifest><item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>${manifest}</manifest><spine toc="ncx">${spine}</spine></package>`;
+                
+                oebps.file("content.opf", opf);
+                oebps.file("toc.ncx", `<?xml version="1.0"?><ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1"><head><meta name="dtb:uid" content="${uuid}"/></head><docTitle><text>${book.title}</text></docTitle><navMap>${nav}</navMap></ncx>`);
+
+                const blob = await zip.generateAsync({type:"blob"});
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = (book.title || "book").replace(/[^a-z0-9]/gi, '_') + ".epub";
+                a.click();
+                stopLoader();
+
+            } catch(e) {
+                failLoader(e.message);
+            }
+        }, 500);
+    }
+</script>
+</body>
+</html>        .tool-btn { 
             padding: 5px 10px; border: 1px solid transparent; background: white; border-radius: 4px; 
             cursor: pointer; font-size: 13px; font-weight: 500; color: #475569; border-color: #e2e8f0; 
             display: flex; align-items: center; gap: 5px; flex-shrink: 0; 
