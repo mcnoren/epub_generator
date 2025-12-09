@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EPUB Studio v23 - Image Fix</title>
+    <title>EPUB Studio v24 - Editor Pro</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         /* --- RESET & LAYOUT --- */
@@ -11,7 +11,7 @@
         html, body { margin: 0; padding: 0; height: 100dvh; overflow: hidden; background: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
         body { display: flex; flex-direction: column; }
 
-        /* --- UI COMPONENTS --- */
+        /* --- LOADER --- */
         #loader-overlay { position: fixed; inset: 0; background: rgba(255,255,255,0.98); z-index: 9999; display: none; flex-direction: column; justify-content: center; align-items: center; }
         #loader-overlay.active { display: flex; }
         .spinner { width: 40px; height: 40px; border: 4px solid #e2e8f0; border-top: 4px solid #2563eb; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px; }
@@ -27,23 +27,28 @@
         .btn { display: flex; align-items: center; gap: 5px; padding: 6px 12px; background: white; border: 1px solid #cbd5e1; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500; color: #334155; }
         .btn-primary { background: #2563eb; color: white; border: none; }
         
+        /* --- MAIN TOOLBAR --- */
         #main-toolbar { height: 45px; background: #f1f5f9; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; padding: 0 10px; gap: 5px; overflow-x: auto; white-space: nowrap; flex-shrink: 0; z-index: 40; }
         .tool-btn { padding: 5px 10px; border: 1px solid transparent; background: white; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500; color: #475569; border-color: #e2e8f0; display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
         .tool-btn:active { background: #e2e8f0; }
+        .tool-btn.danger { color: #dc2626; border-color: #fecaca; background: #fee2e2; margin-left: auto; }
 
-        /* --- PREVIEW THUMBNAIL (NEW) --- */
-        #toolbar-preview {
-            width: 30px; height: 30px; border-radius: 4px; border: 1px solid #cbd5e1;
-            object-fit: cover; margin-left: 5px; background: #e2e8f0; display: none;
+        /* --- IMAGE TOOLBAR (FLOATING) --- */
+        #img-toolbar { 
+            position: absolute; display: none; background: #1e293b; padding: 10px; 
+            border-radius: 8px; gap: 10px; z-index: 100; box-shadow: 0 4px 15px rgba(0,0,0,0.3); 
+            transform: translate(-50%, -100%); margin-top: -10px; align-items: center;
         }
-        #toolbar-preview.active { display: block; }
-
-        /* --- IMAGE TOOLBAR --- */
-        #img-toolbar { position: absolute; display: none; background: #1e293b; padding: 8px; border-radius: 6px; gap: 8px; z-index: 100; box-shadow: 0 4px 12px rgba(0,0,0,0.2); transform: translate(-50%, -100%); margin-top: -10px; }
         #img-toolbar.visible { display: flex; }
         #img-toolbar::after { content: ''; position: absolute; bottom: -6px; left: 50%; transform: translateX(-50%); border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 6px solid #1e293b; }
+        
         .img-action { background: #334155; color: white; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+        .img-action:hover { background: #475569; }
         .img-action.danger { background: #ef4444; }
+        
+        /* Slider Style */
+        .slider-container { display: flex; align-items: center; gap: 5px; color: white; font-size: 11px; }
+        input[type=range] { width: 80px; accent-color: #3b82f6; cursor: pointer; }
 
         main { display: flex; flex: 1; overflow: hidden; position: relative; }
         aside { width: 250px; background: white; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; flex-shrink: 0; z-index: 40; transition: transform 0.3s ease; }
@@ -74,17 +79,17 @@
         #editor p { margin: 0; padding: 0; min-height: 1em; }
         #editor:empty:before { content: attr(placeholder); color: #94a3b8; pointer-events: none; display: block; }
         
-        /* IMAGE FIXES */
+        /* MULTI-IMAGE SUPPORT */
         #editor img { 
-            max-width: 100% !important; 
-            height: auto !important; 
-            display: block; 
-            margin: 10px auto; 
+            display: inline-block; /* Allows side-by-side */
+            vertical-align: bottom;
+            margin: 5px;
             cursor: pointer; 
             box-sizing: border-box; 
             object-fit: contain;
-            /* Default small inline size for new inserts */
-            max-height: 400px; 
+            /* Default to just under 50% so two fit side by side */
+            width: 45%; 
+            max-width: 100%;
         }
         #editor img.selected { outline: 3px solid #2563eb; box-shadow: 0 0 10px rgba(37, 99, 235, 0.3); }
 
@@ -109,14 +114,15 @@
 </div>
 
 <div id="img-toolbar">
-    <button class="img-action" onclick="imgResize('100%')">Full</button>
-    <button class="img-action" onclick="imgResize('75%')">75%</button>
-    <button class="img-action" onclick="imgResize('50%')">50%</button>
-    <div style="width:1px; background:#475569; margin:0 4px;"></div>
-    <button class="img-action" onclick="imgAlign('left')">Left</button>
-    <button class="img-action" onclick="imgAlign('center')">Center</button>
-    <button class="img-action" onclick="imgAlign('right')">Right</button>
-    <div style="width:1px; background:#475569; margin:0 4px;"></div>
+    <div class="slider-container">
+        <span>Size:</span>
+        <input type="range" min="10" max="100" value="45" oninput="imgSlider(this.value)">
+    </div>
+    <div style="width:1px; height:20px; background:#475569; margin:0 4px;"></div>
+    <button class="img-action" onclick="imgFloat('left')" title="Float Left">Left</button>
+    <button class="img-action" onclick="imgFloat('none')" title="Inline (Default)">Inline</button>
+    <button class="img-action" onclick="imgFloat('right')" title="Float Right">Right</button>
+    <div style="width:1px; height:20px; background:#475569; margin:0 4px;"></div>
     <button class="img-action danger" onclick="imgDelete()">Delete</button>
 </div>
 
@@ -139,17 +145,20 @@
 </header>
 
 <div id="main-toolbar">
-    <button class="tool-btn" onclick="format('bold')"><b>B</b> Bold</button>
-    <button class="tool-btn" onclick="format('italic')"><i>I</i> Italic</button>
+    <button class="tool-btn" onclick="format('undo')" title="Undo">↶ Undo</button>
+    <button class="tool-btn" onclick="format('redo')" title="Redo">↷ Redo</button>
+    <div style="width:1px; height:20px; background:#e2e8f0; margin:0 5px;"></div>
+    <button class="tool-btn" onclick="format('bold')"><b>B</b></button>
+    <button class="tool-btn" onclick="format('italic')"><i>I</i></button>
     <button class="tool-btn" onclick="format('formatBlock','h2')">Header</button>
     <button class="tool-btn" onclick="format('formatBlock','p')">Text</button>
-    <button class="tool-btn" onclick="removeGaps()" title="Removes empty lines">✂ Remove Gaps</button>
-    <label class="tool-btn" style="padding-right:5px;">
+    <button class="tool-btn" onclick="removeGaps()" title="Removes empty lines">✂ Gaps</button>
+    <label class="tool-btn">
         🖼 Image
         <input type="file" accept="image/*" style="display:none" onchange="insertImageToEditor(this)">
     </label>
-    <img id="toolbar-preview" src="" alt="">
-    <button class="tool-btn" onclick="format('removeFormat')">Clear Format</button>
+    <button class="tool-btn" onclick="format('removeFormat')">Clean</button>
+    <button class="tool-btn danger" onclick="clearAll()">🗑 Clear All</button>
 </div>
 
 <main>
@@ -163,8 +172,7 @@
         <div id="tab-chapters" class="sidebar-content active">
             <ul class="chapter-list" id="chapter-list"></ul>
             <div style="padding:15px; border-top:1px solid #e2e8f0;">
-                <button class="btn" style="width:100%; justify-content:center; margin-bottom:10px;" onclick="addChapter()">+ New Chapter</button>
-                <button class="btn btn-danger" style="width:100%; justify-content:center;" onclick="clearAll()">⚠ Clear All</button>
+                <button class="btn" style="width:100%; justify-content:center;" onclick="addChapter()">+ New Chapter</button>
             </div>
         </div>
 
@@ -223,12 +231,11 @@
     }
 
     function clearAll() {
-        if(!confirm("Are you sure? This deletes everything.")) return;
+        if(!confirm("⚠️ WARNING: This will delete the entire book. Are you sure?")) return;
         book = { title: "", author: "", css: "", assets: {}, coverPath: null, chapters: [] };
         syncMeta('title', ''); syncMeta('author', '');
         renderCoverPreview();
         addChapter();
-        if(window.innerWidth <= 768) toggleSidebar();
     }
 
     function removeGaps() {
@@ -250,6 +257,11 @@
         if(e.target.tagName === 'IMG') {
             selectedImg = e.target;
             selectedImg.classList.add('selected');
+            
+            // Set slider value based on current width
+            let w = selectedImg.style.width || "45%";
+            document.querySelector('input[type=range]').value = parseInt(w);
+
             const toolbar = document.getElementById('img-toolbar');
             const rect = selectedImg.getBoundingClientRect();
             toolbar.style.top = (rect.top + window.scrollY) + 'px';
@@ -257,10 +269,32 @@
             toolbar.classList.add('visible');
         }
     }
-    function imgResize(w) { if(selectedImg) { selectedImg.style.width = w; saveCurrent(); } }
-    function imgAlign(a) { if(selectedImg) { selectedImg.style.display = 'block'; selectedImg.style.margin = a==='left'?'10px auto 10px 0':(a==='right'?'10px 0 10px auto':'10px auto'); saveCurrent(); } }
-    function imgDelete() { if(selectedImg) { selectedImg.remove(); document.getElementById('img-toolbar').classList.remove('visible'); selectedImg = null; saveCurrent(); } }
 
+    // Slider for sizing
+    function imgSlider(val) {
+        if(!selectedImg) return;
+        selectedImg.style.width = val + "%";
+        saveCurrent();
+    }
+
+    // Layout alignment (Inline/Float)
+    function imgFloat(type) {
+        if(!selectedImg) return;
+        if(type === 'left') { selectedImg.style.float = 'left'; selectedImg.style.margin = '0 10px 5px 0'; }
+        else if(type === 'right') { selectedImg.style.float = 'right'; selectedImg.style.margin = '0 0 5px 10px'; }
+        else { selectedImg.style.float = 'none'; selectedImg.style.margin = '5px'; }
+        saveCurrent();
+    }
+
+    function imgDelete() {
+        if(!selectedImg) return;
+        selectedImg.remove();
+        document.getElementById('img-toolbar').classList.remove('visible');
+        selectedImg = null;
+        saveCurrent();
+    }
+
+    // --- UI ---
     function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); document.getElementById('sidebar-overlay').classList.toggle('active'); }
     function startLoader(msg) { document.getElementById('loader-overlay').classList.add('active'); document.getElementById('loader-msg').innerText = msg; document.querySelector('.spinner').style.display='block'; document.getElementById('loader-close').style.display='none'; }
     function failLoader(err) { document.getElementById('loader-msg').innerText = "Error: "+err; document.querySelector('.spinner').style.display='none'; document.getElementById('loader-close').style.display='block'; }
@@ -289,7 +323,7 @@
         }
     }
 
-    // --- IMPORT ENGINE ---
+    // --- IMPORT ---
     function resolvePath(base, relative) {
         const stack = base.split('/'); stack.pop();
         const parts = relative.split('/');
@@ -311,7 +345,6 @@
             const content = await zip.loadAsync(input.files[0]);
             book = { title: "", author: "", css: "", assets: {}, coverPath: null, chapters: [] };
             
-            // OPF Search
             let opfPath = null;
             const container = content.file("META-INF/container.xml");
             if (container) {
@@ -343,7 +376,6 @@
                 if(item.getAttribute("properties") === "cover-image") coverId = id;
             });
 
-            // 1. Assets
             for (let id in manifest) {
                 const href = manifest[id];
                 const fullPath = resolvePath(opfPath, href);
@@ -358,7 +390,6 @@
                 }
             }
 
-            // 2. TOC Map
             let tocMap = {};
             const spineTag = xml.getElementsByTagName("spine")[0];
             const tocId = spineTag.getAttribute("toc");
@@ -381,7 +412,6 @@
                 }
             }
 
-            // 3. Chapters
             const spine = Array.from(xml.getElementsByTagName("itemref"));
             for (let i = 0; i < spine.length; i++) {
                 const id = spine[i].getAttribute("idref");
@@ -394,26 +424,8 @@
                 if (fileObj) {
                     const html = await fileObj.async("text");
                     const doc = parser.parseFromString(html, "text/html");
-                    
-                    // DEEP IMAGE SCAN
-                    // Fixes "Image Tag" error by looking for filename in all assets
-                    doc.querySelectorAll('img').forEach(img => {
-                        const src = img.getAttribute('src');
-                        if(src) {
-                            // Try exact name match from path
-                            let filename = src.split('/').pop();
-                            // If not in assets, try fuzzy match
-                            if(!book.assets[filename]) {
-                                filename = Object.keys(book.assets).find(k => k.toLowerCase() === filename.toLowerCase());
-                            }
-                            if(filename && book.assets[filename]) {
-                                img.setAttribute('src', URL.createObjectURL(book.assets[filename]));
-                                img.setAttribute('data-filename', filename);
-                            }
-                        }
-                    });
+                    processDocImages(doc);
 
-                    // Title Logic
                     let chTitle = "";
                     if (tocMap[href]) chTitle = tocMap[href];
                     else {
@@ -442,10 +454,25 @@
         }
     }
 
+    function processDocImages(doc) {
+        doc.querySelectorAll('img').forEach(img => {
+            const src = img.getAttribute('src');
+            if(src) {
+                const filename = src.split('/').pop();
+                if(book.assets[filename]) {
+                    img.setAttribute('src', URL.createObjectURL(book.assets[filename]));
+                    img.setAttribute('data-filename', filename);
+                    // Ensure existing images are inline by default
+                    img.style.display = "inline-block";
+                    img.style.width = "45%";
+                }
+            }
+        });
+    }
+
     function findFile(zip, path) {
         if(zip.file(path)) return zip.file(path);
         for(let k in zip.files) if(k.toLowerCase() === path.toLowerCase()) return zip.files[k];
-        // Brute force check just filename
         const simpleName = path.split('/').pop();
         for(let k in zip.files) if(k.split('/').pop().toLowerCase() === simpleName.toLowerCase()) return zip.files[k];
         return null;
@@ -476,15 +503,14 @@
         book.assets[filename] = file;
         const url = URL.createObjectURL(file);
         
-        // Update Preview
-        const preview = document.getElementById('toolbar-preview');
-        preview.src = url;
-        preview.classList.add('active');
-        
         const img = document.createElement('img');
         img.src = url;
         img.setAttribute('data-filename', filename);
         img.setAttribute('alt', '');
+        
+        // Default style: 45% width, inline so they can sit side by side
+        img.style.width = "45%";
+        img.style.display = "inline-block";
         
         const sel = document.getSelection();
         if (sel.rangeCount > 0) {
@@ -592,9 +618,9 @@
                         const fname = img.getAttribute('data-filename');
                         if(fname && book.assets[fname]) img.setAttribute('src', `images/${fname}`);
                         img.removeAttribute('data-filename');
-                        if(!img.style.maxWidth) img.style.maxWidth = "100%";
-                        img.classList.remove('selected');
+                        // Export inline styles to preserve user layout
                         if(!img.hasAttribute('alt')) img.setAttribute('alt', '');
+                        img.classList.remove('selected');
                     });
 
                     let xmlBody = serializer.serializeToString(doc.body);
