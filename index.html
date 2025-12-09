@@ -679,6 +679,7 @@
                     assetManifest += `<item id="${id}" href="images/${name}" media-type="${mime}"${properties}/>\n`;
                 }
 
+                // We add 'text-indent: 1.5em;' to the paragraph rules.
                 const css = book.css || `body{padding:5%; line-height:1.5;} p{margin:0; padding:0; text-indent: 1.5em;} img{max-width:100%; height:auto;}`;
                 oebps.file("style.css", css);
 
