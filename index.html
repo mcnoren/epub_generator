@@ -3,217 +3,244 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EPUB Studio v9 - Reliable Re-Master</title>
+    <title>EPUB Studio v10 - Bulletproof</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
-        /* --- LAYOUT RESET --- */
+        /* --- RESET & LAYOUT --- */
         * { box-sizing: border-box; }
-        html, body { margin: 0; padding: 0; height: 100vh; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f3f4f6; }
-        
-        /* --- FLEX SHELL --- */
+        html, body { margin: 0; padding: 0; height: 100vh; overflow: hidden; background: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
         body { display: flex; flex-direction: column; }
 
-        /* Header */
-        header {
-            height: 60px; background: white; border-bottom: 1px solid #e5e7eb;
-            display: flex; align-items: center; justify-content: space-between;
-            padding: 0 20px; flex-shrink: 0; z-index: 10;
+        /* --- LOADER OVERLAY (FIXED) --- */
+        #loader-overlay {
+            position: fixed; inset: 0; background: rgba(255, 255, 255, 0.98); z-index: 9999;
+            display: none; flex-direction: column; justify-content: center; align-items: center;
         }
-        .meta-group { display: flex; gap: 10px; width: 40%; }
-        input.meta { width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px; }
+        #loader-overlay.active { display: flex; }
+        
+        .spinner {
+            width: 50px; height: 50px; border: 4px solid #e2e8f0; border-top: 4px solid #2563eb;
+            border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px;
+        }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
 
-        .btn-group { display: flex; gap: 10px; }
-        button, .file-label {
-            padding: 8px 16px; border-radius: 6px; border: 1px solid #d1d5db;
-            background: white; cursor: pointer; font-size: 14px; color: #374151;
-            display: flex; align-items: center; gap: 6px;
+        #loader-msg { font-size: 1.2rem; font-weight: 600; color: #1e293b; margin-bottom: 10px; }
+        #loader-log {
+            font-family: monospace; font-size: 0.85rem; color: #64748b;
+            max-height: 150px; overflow-y: auto; width: 90%; max-width: 500px;
+            background: #f1f5f9; padding: 10px; border-radius: 6px; border: 1px solid #e2e8f0;
+            text-align: left; margin-bottom: 15px;
         }
-        button:hover, .file-label:hover { background: #f9fafb; border-color: #9ca3af; }
-        button.primary { background: #2563eb; color: white; border: none; }
-        button.primary:hover { background: #1d4ed8; }
+        #loader-close {
+            padding: 8px 16px; background: #ef4444; color: white; border: none; border-radius: 4px;
+            cursor: pointer; display: none; /* Hidden unless error */
+        }
+        #loader-close:hover { background: #dc2626; }
+
+        /* --- HEADER --- */
+        header {
+            height: 60px; background: white; border-bottom: 1px solid #e2e8f0;
+            display: flex; align-items: center; justify-content: space-between; padding: 0 20px;
+            flex-shrink: 0;
+        }
+        .inputs { display: flex; gap: 10px; flex: 1; max-width: 600px; }
+        input[type="text"] {
+            width: 100%; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px;
+        }
+        .actions { display: flex; gap: 10px; }
+        .btn {
+            display: flex; align-items: center; gap: 6px; padding: 8px 16px;
+            background: white; border: 1px solid #cbd5e1; border-radius: 6px;
+            cursor: pointer; font-size: 14px; font-weight: 500; color: #334155;
+            transition: all 0.2s;
+        }
+        .btn:hover { background: #f8fafc; border-color: #94a3b8; }
+        .btn-primary { background: #2563eb; color: white; border: none; }
+        .btn-primary:hover { background: #1d4ed8; }
         input[type="file"] { display: none; }
 
-        /* Main Workspace */
-        main { display: flex; flex: 1; height: calc(100vh - 60px); }
+        /* --- MAIN --- */
+        main { display: flex; flex: 1; overflow: hidden; }
 
         /* Sidebar */
         aside {
-            width: 280px; background: white; border-right: 1px solid #e5e7eb;
+            width: 260px; background: white; border-right: 1px solid #e2e8f0;
             display: flex; flex-direction: column; flex-shrink: 0;
         }
         .chapter-list { flex: 1; overflow-y: auto; list-style: none; padding: 0; margin: 0; }
         .chapter-item {
-            padding: 12px 20px; border-bottom: 1px solid #f3f4f6; cursor: pointer;
-            font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+            padding: 12px 16px; border-bottom: 1px solid #f1f5f9; cursor: pointer;
+            font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
-        .chapter-item:hover { background: #f9fafb; }
-        .chapter-item.active { background: #eff6ff; color: #2563eb; border-left: 4px solid #2563eb; font-weight: 500; }
-        
-        .sidebar-actions { padding: 15px; border-top: 1px solid #e5e7eb; }
-        .sidebar-actions button { width: 100%; }
+        .chapter-item:hover { background: #f8fafc; }
+        .chapter-item.active { background: #eff6ff; color: #2563eb; border-left: 4px solid #2563eb; font-weight: 600; }
+        .sidebar-foot { padding: 12px; border-top: 1px solid #e2e8f0; }
+        .sidebar-foot button { width: 100%; justify-content: center; }
 
         /* Editor */
-        .editor-wrapper {
-            flex: 1; background: #e5e5e5; display: flex; justify-content: center;
+        .editor-area {
+            flex: 1; background: #cbd5e1; display: flex; justify-content: center;
             overflow-y: auto; padding: 40px;
         }
-        .page {
-            width: 100%; max-width: 800px; min-height: 100%; background: white;
-            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); padding: 60px;
+        .paper {
+            width: 100%; max-width: 850px; min-height: 100%; background: white;
+            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); padding: 60px;
             display: flex; flex-direction: column;
         }
-        
-        #chapter-title-input {
-            font-size: 24px; font-weight: bold; border: none; margin-bottom: 20px;
-            font-family: serif; width: 100%; outline: none; border-bottom: 2px solid transparent;
-        }
-        #chapter-title-input:focus { border-bottom-color: #2563eb; }
 
         .toolbar {
-            position: sticky; top: 0; background: white; padding: 10px 0; margin-bottom: 20px;
-            border-bottom: 1px solid #e5e7eb; display: flex; gap: 5px; z-index: 5;
+            position: sticky; top: 0; background: white; padding: 10px 0;
+            border-bottom: 2px solid #f1f5f9; margin-bottom: 20px; z-index: 10;
+            display: flex; gap: 8px;
         }
+        .tool-btn {
+            padding: 4px 10px; border: 1px solid #e2e8f0; background: white; border-radius: 4px;
+            cursor: pointer; font-size: 14px; font-weight: 600; color: #64748b;
+        }
+        .tool-btn:hover { color: #2563eb; border-color: #2563eb; }
 
-        #editor-content {
-            flex: 1; outline: none; font-family: 'Times New Roman', serif;
-            font-size: 18px; line-height: 1.6;
+        #chapter-title {
+            font-size: 28px; font-weight: 800; border: none; outline: none;
+            width: 100%; margin-bottom: 10px; font-family: serif; color: #1e293b;
         }
-        /* Content Styles */
-        #editor-content img { max-width: 100%; height: auto; display: block; margin: 1em auto; }
-        #editor-content p { margin-bottom: 1em; }
-
-        /* Loader Overlay */
-        #overlay {
-            position: fixed; inset: 0; background: rgba(255,255,255,0.95);
-            z-index: 100; display: none; flex-direction: column;
-            justify-content: center; align-items: center;
+        
+        #editor {
+            flex: 1; outline: none; font-family: 'Georgia', 'Times New Roman', serif;
+            font-size: 18px; line-height: 1.7; color: #334155;
         }
-        .spinner {
-            width: 40px; height: 40px; border: 4px solid #e5e7eb;
-            border-top: 4px solid #2563eb; border-radius: 50%;
-            animation: spin 1s linear infinite; margin-bottom: 15px;
-        }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        #status-msg { font-weight: 500; color: #374151; margin-bottom: 10px; }
-        #error-msg { color: #dc2626; font-size: 14px; max-width: 400px; text-align: center; display: none; }
-        #close-overlay { margin-top: 15px; display: none; }
+        /* Internal Editor Styles */
+        #editor p { margin-bottom: 1.2em; }
+        #editor img { max-width: 100%; height: auto; display: block; margin: 1.5em auto; border-radius: 4px; }
+        #editor h1, #editor h2, #editor h3 { margin-top: 1.5em; margin-bottom: 0.5em; }
     </style>
 </head>
 <body>
 
-<div id="overlay">
+<div id="loader-overlay">
     <div class="spinner"></div>
-    <div id="status-msg">Initializing...</div>
-    <div id="error-msg"></div>
-    <button id="close-overlay" onclick="document.getElementById('overlay').style.display='none'">Close</button>
+    <div id="loader-msg">Initializing...</div>
+    <div id="loader-log"></div>
+    <button id="loader-close" onclick="closeLoader()">Close</button>
 </div>
 
 <header>
-    <div class="meta-group">
-        <input type="text" class="meta" id="meta-title" placeholder="Book Title">
-        <input type="text" class="meta" id="meta-author" placeholder="Author">
+    <div class="inputs">
+        <input type="text" id="meta-title" placeholder="Book Title">
+        <input type="text" id="meta-author" placeholder="Author">
     </div>
-    <div class="btn-group">
-        <label class="file-label">
-            📂 Import EPUB
-            <input type="file" accept=".epub" onchange="importBook(this)">
+    <div class="actions">
+        <label class="btn">
+            📂 Import
+            <input type="file" accept=".epub" onchange="importEPUB(this)">
         </label>
-        <button class="primary" onclick="exportBook()">⬇ Export EPUB</button>
+        <button class="btn btn-primary" onclick="exportEPUB()">⬇ Export</button>
     </div>
 </header>
 
 <main>
     <aside>
         <ul class="chapter-list" id="chapter-list"></ul>
-        <div class="sidebar-actions">
-            <button onclick="addChapter()">+ Add Chapter</button>
+        <div class="sidebar-foot">
+            <button class="btn" onclick="addChapter()">+ Add Chapter</button>
         </div>
     </aside>
 
-    <div class="editor-wrapper">
-        <div class="page">
-            <input type="text" id="chapter-title-input" placeholder="Chapter Title" oninput="updateState()">
+    <div class="editor-area">
+        <div class="paper">
+            <input type="text" id="chapter-title" placeholder="Chapter Title" oninput="saveCurrent()">
             <div class="toolbar">
-                <button onclick="fmt('bold')"><b>B</b></button>
-                <button onclick="fmt('italic')"><i>I</i></button>
-                <button onclick="fmt('formatBlock','h2')">Heading</button>
-                <button onclick="fmt('formatBlock','p')">Paragraph</button>
-                <button onclick="fmt('removeFormat')">Clear Style</button>
+                <button class="tool-btn" onclick="fmt('bold')">B</button>
+                <button class="tool-btn" onclick="fmt('italic')">I</button>
+                <button class="tool-btn" onclick="fmt('formatBlock','h2')">H2</button>
+                <button class="tool-btn" onclick="fmt('formatBlock','p')">P</button>
+                <button class="tool-btn" onclick="fmt('removeFormat')">Clear</button>
             </div>
-            <div id="editor-content" contenteditable="true" oninput="updateState()">
-                <p>Welcome. Import an EPUB to start editing.</p>
+            <div id="editor" contenteditable="true" oninput="saveCurrent()">
+                <p>Welcome. Please import an EPUB file to begin.</p>
             </div>
         </div>
     </div>
 </main>
 
 <script>
-    // --- APP STATE ---
-    // We store the book in a standardized format "Re-Mastered"
-    let book = {
-        title: "Untitled",
-        author: "Unknown",
-        chapters: [], // { id, title, content (HTML) }
-        assets: {},   // { "Images/pic.jpg": Blob }
-        css: ""       // content of style.css
+    // --- STARTUP CHECK ---
+    window.onload = function() {
+        if (typeof JSZip === 'undefined') {
+            alert("CRITICAL ERROR: JSZip library failed to load.\nPlease check your internet connection and refresh.");
+        }
     };
-    let currentChapterId = null;
 
-    // --- HELPER FUNCS ---
+    // --- STATE ---
+    let book = {
+        title: "",
+        author: "",
+        css: "",
+        assets: {}, // Filename -> Blob
+        chapters: [] // {id, title, content}
+    };
+    let currentId = null;
+
+    // --- LOGGING SYSTEM ---
+    const logEl = document.getElementById('loader-log');
+    function log(msg) {
+        logEl.innerHTML += `<div>> ${msg}</div>`;
+        logEl.scrollTop = logEl.scrollHeight;
+        console.log(msg);
+    }
+    function startLoader(msg) {
+        document.getElementById('loader-overlay').classList.add('active');
+        document.getElementById('loader-msg').innerText = msg;
+        document.querySelector('.spinner').style.display = 'block';
+        document.getElementById('loader-close').style.display = 'none';
+        logEl.innerHTML = ''; // Clear log
+        log("Process started...");
+    }
+    function stopLoader() {
+        document.getElementById('loader-overlay').classList.remove('active');
+    }
+    function failLoader(err) {
+        document.getElementById('loader-msg').innerText = "Error";
+        document.querySelector('.spinner').style.display = 'none';
+        document.getElementById('loader-close').style.display = 'block';
+        log("ERROR: " + err);
+        alert("Operation Failed: " + err);
+    }
+    function closeLoader() {
+        document.getElementById('loader-overlay').classList.remove('active');
+    }
+
+    // --- UI HELPERS ---
     const get = id => document.getElementById(id);
-    const fmt = (cmd, val) => document.execCommand(cmd, false, val);
-    
-    function showLoading(msg) {
-        get('overlay').style.display = 'flex';
-        get('spinner').style.display = 'block';
-        get('error-msg').style.display = 'none';
-        get('close-overlay').style.display = 'none';
-        get('status-msg').innerText = msg;
-    }
+    const fmt = (c, v) => document.execCommand(c, false, v);
 
-    function hideLoading() {
-        get('overlay').style.display = 'none';
-    }
-
-    function showError(msg) {
-        get('spinner').style.display = 'none';
-        get('status-msg').innerText = "Error";
-        get('error-msg').innerText = msg;
-        get('error-msg').style.display = 'block';
-        get('close-overlay').style.display = 'block';
-    }
-
-    // --- UI LOGIC ---
-    function renderSidebar() {
+    function renderList() {
         const list = get('chapter-list');
         list.innerHTML = '';
-        book.chapters.forEach((ch, idx) => {
+        book.chapters.forEach((c, i) => {
             const li = document.createElement('li');
-            li.className = `chapter-item ${ch.id === currentChapterId ? 'active' : ''}`;
-            li.innerText = ch.title || `Chapter ${idx+1}`;
-            li.onclick = () => loadChapter(ch.id);
+            li.className = `chapter-item ${c.id === currentId ? 'active' : ''}`;
+            li.innerText = c.title || `Chapter ${i+1}`;
+            li.onclick = () => loadChapter(c.id);
             list.appendChild(li);
         });
     }
 
     function loadChapter(id) {
-        currentChapterId = id;
-        const ch = book.chapters.find(c => c.id === id);
-        if(!ch) return;
-        get('chapter-title-input').value = ch.title;
-        get('editor-content').innerHTML = ch.content;
-        renderSidebar(); // update active class
+        currentId = id;
+        const c = book.chapters.find(x => x.id === id);
+        if (!c) return;
+        get('chapter-title').value = c.title;
+        get('editor').innerHTML = c.content;
+        renderList();
     }
 
-    function updateState() {
-        const ch = book.chapters.find(c => c.id === currentChapterId);
-        if(ch) {
-            ch.title = get('chapter-title-input').value;
-            ch.content = get('editor-content').innerHTML;
-            
-            // Live update sidebar text
-            const activeItem = document.querySelector('.chapter-item.active');
-            if(activeItem) activeItem.innerText = ch.title;
+    function saveCurrent() {
+        const c = book.chapters.find(x => x.id === currentId);
+        if (c) {
+            c.title = get('chapter-title').value;
+            c.content = get('editor').innerHTML;
+            const active = document.querySelector('.chapter-item.active');
+            if (active) active.innerText = c.title;
         }
         book.title = get('meta-title').value;
         book.author = get('meta-author').value;
@@ -221,112 +248,107 @@
 
     function addChapter() {
         const id = Date.now();
-        book.chapters.push({ id, title: "New Chapter", content: "<p>Start typing...</p>" });
+        book.chapters.push({ id, title: "New Chapter", content: "<p>Start writing...</p>" });
         loadChapter(id);
     }
 
-    // Initialize
-    addChapter();
-
-    // --- IMPORT ENGINE (V9 - ASSET SCRAPER) ---
-    async function importBook(input) {
-        if(!input.files[0]) return;
-        showLoading("Analyzing EPUB...");
+    // --- ROBUST IMPORT ENGINE ---
+    async function importEPUB(input) {
+        if (!input.files[0]) return;
+        startLoader("Importing EPUB...");
         
         try {
+            const file = input.files[0];
             const zip = new JSZip();
-            const content = await zip.loadAsync(input.files[0]);
+            log("Reading file: " + file.name);
+            const content = await zip.loadAsync(file);
             
-            // 1. Reset State
-            book.assets = {};
-            book.chapters = [];
-            book.css = "";
-
-            // 2. Locate OPF
+            // 1. Reset
+            book = { title: "", author: "", css: "", assets: {}, chapters: [] };
+            
+            // 2. Find OPF
             let opfPath = null;
-            // Try container.xml first
             const container = content.file("META-INF/container.xml");
-            if(container) {
-                const xml = await container.async("text");
-                const match = xml.match(/full-path="([^"]+)"/);
-                if(match) opfPath = match[1];
+            if (container) {
+                const txt = await container.async("text");
+                const match = txt.match(/full-path="([^"]+)"/);
+                if (match) opfPath = match[1];
             }
-            // Fallback: Find any .opf
-            if(!opfPath) {
+            if (!opfPath) {
+                log("Container.xml missing/invalid. Scanning for .opf...");
                 opfPath = Object.keys(content.files).find(f => f.endsWith('.opf'));
             }
-            if(!opfPath) throw new Error("Invalid EPUB: No OPF file found.");
+            if (!opfPath) throw new Error("No .opf file found (Invalid EPUB)");
+            log("Found OPF: " + opfPath);
 
             // 3. Parse OPF
             const opfDir = opfPath.includes('/') ? opfPath.substring(0, opfPath.lastIndexOf('/')) : '';
-            const opfData = await content.file(opfPath).async("text");
+            const opfTxt = await content.file(opfPath).async("text");
             const parser = new DOMParser();
-            const opfDoc = parser.parseFromString(opfData, "text/xml");
+            const xml = parser.parseFromString(opfTxt, "text/xml");
 
             // Meta
-            book.title = opfDoc.getElementsByTagName("dc:title")[0]?.textContent || "Untitled";
-            book.author = opfDoc.getElementsByTagName("dc:creator")[0]?.textContent || "Unknown";
+            book.title = xml.getElementsByTagName("dc:title")[0]?.textContent || "Untitled";
+            book.author = xml.getElementsByTagName("dc:creator")[0]?.textContent || "Unknown";
             get('meta-title').value = book.title;
             get('meta-author').value = book.author;
+            log(`Meta: ${book.title} by ${book.author}`);
 
-            // 4. Asset & Content Discovery
-            const manifest = {}; // ID -> Href
-            const items = Array.from(opfDoc.getElementsByTagName("item"));
-            
-            // First pass: Map IDs and grab CSS
-            for(const item of items) {
-                const id = item.getAttribute("id");
-                const href = decodeURI(item.getAttribute("href"));
-                const mediaType = item.getAttribute("media-type");
-                manifest[id] = href;
+            // 4. Manifest
+            const manifest = {};
+            Array.from(xml.getElementsByTagName("item")).forEach(item => {
+                manifest[item.getAttribute("id")] = decodeURI(item.getAttribute("href"));
+            });
 
+            // 5. Load Assets (CSS & Images)
+            log("Loading Assets...");
+            for (let id in manifest) {
+                const href = manifest[id];
                 const fullPath = opfDir ? `${opfDir}/${href}` : href;
-                
-                // Save CSS?
-                if(mediaType === "text/css" || href.endsWith(".css")) {
-                    const file = findFile(content, fullPath);
-                    if(file) book.css += await file.async("text");
+                const fileObj = findFile(content, fullPath);
+
+                if (!fileObj) continue;
+
+                // CSS
+                if (href.endsWith('.css')) {
+                    book.css += await fileObj.async("text");
                 }
-                
-                // Save Images/Fonts?
-                if(mediaType.startsWith("image/") || href.match(/\.(jpg|jpeg|png|gif|svg|ttf|otf|woff)$/i)) {
-                    const file = findFile(content, fullPath);
-                    if(file) {
-                        // Store as Blob in assets map using clean filename
-                        const blob = await file.async("blob");
-                        // We store by filename only (flat structure for simplicity in rebuild)
-                        book.assets[href.split('/').pop()] = blob;
-                    }
+                // Images
+                if (href.match(/\.(jpg|jpeg|png|gif|svg|webp)$/i)) {
+                    const blob = await fileObj.async("blob");
+                    const filename = href.split('/').pop();
+                    book.assets[filename] = blob;
                 }
             }
+            log(`Loaded ${Object.keys(book.assets).length} images.`);
 
-            // 5. Build Chapters
-            const spine = Array.from(opfDoc.getElementsByTagName("itemref"));
-            showLoading(`Importing ${spine.length} chapters...`);
+            // 6. Load Chapters
+            const spine = Array.from(xml.getElementsByTagName("itemref"));
+            log(`Processing ${spine.length} chapters...`);
 
-            for(let i=0; i<spine.length; i++) {
+            for (let i = 0; i < spine.length; i++) {
                 const id = spine[i].getAttribute("idref");
                 const href = manifest[id];
-                if(!href) continue;
+                if (!href) continue;
 
                 const fullPath = opfDir ? `${opfDir}/${href}` : href;
-                const file = findFile(content, fullPath);
-                if(!file) continue;
+                const fileObj = findFile(content, fullPath);
+                if (!fileObj) continue;
 
-                const html = await file.async("text");
+                const html = await fileObj.async("text");
                 const doc = parser.parseFromString(html, "text/html");
 
-                // INLINE IMAGES for Editor Display
-                // We replace src="Images/pic.jpg" with src="blob:..."
-                // But we also map it so we can revert later if needed (though we'll use flat assets on export)
+                // Inject Images
                 const imgs = doc.querySelectorAll('img, image');
-                for(let img of imgs) {
+                for (let img of imgs) {
                     const src = img.getAttribute('src') || img.getAttribute('xlink:href');
-                    if(src) {
-                        const filename = src.split('/').pop(); // Get just name
-                        if(book.assets[filename]) {
+                    if (src) {
+                        const filename = src.split('/').pop();
+                        if (book.assets[filename]) {
                             const url = URL.createObjectURL(book.assets[filename]);
                             img.setAttribute('src', url);
+                            // CRITICAL: Save filename for export
+                            img.setAttribute('data-filename', filename);
                             img.removeAttribute('xlink:href');
                         }
                     }
@@ -339,159 +361,108 @@
                 });
             }
 
-            if(book.chapters.length > 0) loadChapter(book.chapters[0].id);
+            if (book.chapters.length > 0) loadChapter(book.chapters[0].id);
             else addChapter();
 
-            hideLoading();
+            stopLoader();
 
-        } catch(e) {
-            console.error(e);
-            showError("Import failed: " + e.message);
+        } catch (e) {
+            failLoader(e.message);
         }
     }
 
     function findFile(zip, path) {
-        // Exact match
-        if(zip.file(path)) return zip.file(path);
-        // Case insensitive match
+        if (zip.file(path)) return zip.file(path);
         const lower = path.toLowerCase();
-        for(let key in zip.files) {
-            if(key.toLowerCase() === lower) return zip.files[key];
+        for (let k in zip.files) {
+            if (k.toLowerCase() === lower) return zip.files[k];
         }
         return null;
     }
 
-    // --- EXPORT ENGINE (V9 - CLEAN REBUILD) ---
-    async function exportBook() {
-        showLoading("Building EPUB...");
+    // --- EXPORT ENGINE ---
+    async function exportEPUB() {
+        startLoader("Building EPUB...");
         
+        // Small timeout to let UI update
         setTimeout(async () => {
             try {
                 const zip = new JSZip();
                 const uuid = 'urn:uuid:' + crypto.randomUUID();
 
-                // 1. Mimetype & Container
-                zip.file("mimetype", "application/epub+zip", {compression:"STORE"});
+                log("Creating structure...");
+                zip.file("mimetype", "application/epub+zip", { compression: "STORE" });
                 zip.folder("META-INF").file("container.xml", `<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>`);
 
                 const oebps = zip.folder("OEBPS");
-                const imagesFolder = oebps.folder("images");
+                const imgFolder = oebps.folder("images");
 
-                // 2. Write Assets (Images)
-                // We dump all assets into OEBPS/images/ and assume unique filenames
-                const assetManifest = [];
-                for(let filename in book.assets) {
-                    imagesFolder.file(filename, book.assets[filename]);
-                    // escape filename for ID
-                    const id = filename.replace(/[^a-z0-9]/gi, '_'); 
-                    // Guess mime
-                    const ext = filename.split('.').pop().toLowerCase();
-                    const mime = ext === 'png' ? 'image/png' : (ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'application/octet-stream');
-                    assetManifest.push(`<item id="${id}" href="images/${filename}" media-type="${mime}"/>`);
+                // 1. Write Assets
+                log("Writing assets...");
+                let assetManifest = "";
+                for (let name in book.assets) {
+                    imgFolder.file(name, book.assets[name]);
+                    const mime = name.endsWith('png') ? 'image/png' : 'image/jpeg';
+                    const safeId = "img_" + name.replace(/[^a-z0-9]/gi, '');
+                    assetManifest += `<item id="${safeId}" href="images/${name}" media-type="${mime}"/>\n`;
                 }
 
-                // 3. Write CSS (Original or Default)
-                const finalCSS = book.css || `body{font-family:serif;padding:0 5%} img{max-width:100%}`;
-                oebps.file("style.css", finalCSS);
+                // 2. Write CSS
+                const css = book.css || `body{font-family:serif;padding:0 5%} img{max-width:100%;display:block;margin:1em auto}`;
+                oebps.file("style.css", css);
 
-                // 4. Generate Chapters
-                let manifestStr = `<item id="css" href="style.css" media-type="text/css"/>\n` + assetManifest.join('\n');
-                let spineStr = ``;
-                let ncxStr = ``;
+                // 3. Write Chapters
+                log("Writing chapters...");
+                let manifest = `<item id="css" href="style.css" media-type="text/css"/>\n` + assetManifest;
+                let spine = "";
+                let nav = "";
 
                 book.chapters.forEach((ch, i) => {
                     const fn = `ch${i+1}.xhtml`;
                     const id = `c${i+1}`;
-                    
-                    // CLEAN UP HTML FOR EXPORT
-                    // We need to point images back to "images/filename" instead of "blob:..."
+
+                    // Fix Image Links for Export
+                    // We swap blob URL -> images/filename using the data attribute we saved earlier
                     const parser = new DOMParser();
                     const doc = parser.parseFromString(ch.content, "text/html");
-                    
                     doc.querySelectorAll('img').forEach(img => {
-                        const src = img.getAttribute('src');
-                        if(src && src.startsWith('blob:')) {
-                            // We don't know the filename from the blob URL easily
-                            // BUT, we can try to assume the user hasn't changed the image 
-                            // If they imported, the filename is likely in our assets list.
-                            // Limitation: If they added NEW images, this basic version might struggle.
-                            // Fallback: We iterate our assets and see if any blob url matches? No, unsafe.
-                            // V9 Fix: We assume all images in the book are valid assets. 
-                            // In this simple remaster, we rely on the order or simple mapping not being broken.
-                            // Actually, let's look at the original filename if possible?
-                            // Since we can't, we will assume the image persists if untouched.
-                            // TRICK: We didn't save the filename on the IMG tag.
-                            // Let's just fix standard imports:
-                            // If the user didn't change the image, we can't easily guess the filename from blob.
-                            
-                            // PATCH: For this V9, we will rely on the fact that we can't easily export blob images 
-                            // back to disk without the filename. 
-                            // User requirement: "Export should be the same".
-                            // If we can't map blob->filename, we fail.
+                        const fname = img.getAttribute('data-filename');
+                        if (fname && book.assets[fname]) {
+                            img.setAttribute('src', `images/${fname}`);
+                        } else {
+                            // Fallback: If user added a new image without logic, try to match?
+                            // For V10, if no data-filename, we leave as is (likely broken if blob)
+                            // but this ensures imported images work perfectly.
                         }
+                        img.removeAttribute('data-filename');
                     });
-                    
-                    // REVISED EXPORT STRATEGY FOR IMAGES:
-                    // Since we map all assets to 'images/', we need the HTML to point there.
-                    // To do this simply: We iterate the HTML string.
-                    // If we find an img src that looks like a blob, we are in trouble.
-                    // BETTER: During import, we should have stored the filename on the img tag.
-                    // Let's do a quick regex fix on the 'ch.content' string? No.
-                    
-                    // REAL FIX:
-                    // In `importBook` above, I modified it to rely on `book.assets`.
-                    // But I need to modify `importBook` to attach `data-filename` to images.
-                    // I will execute that logic here assuming the user hasn't refreshed.
-                    // (See logic added below in the content generation)
 
-                    const xhtml = `<?xml version="1.0" encoding="utf-8"?><!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml"><head><title>${ch.title}</title><link rel="stylesheet" href="style.css"/></head><body><h2>${ch.title}</h2>${ch.content}</body></html>`;
-                    
-                    // Replace blob URLs with local paths roughly
-                    // This is a "Best Effort" regex for the remaster
-                    // It assumes that if we have an image "cover.jpg", the HTML originally referenced it.
-                    // We simply replace "blob:..." with "images/..." ? No, we don't know which one.
-                    // OK, for V9 Stability: We will STRIP blob sources and leave alt text if we can't match,
-                    // OR we just leave the content as is (which will break images).
-                    
-                    // CORRECTION: To make this "work like expected", we must fix the Image Import logic.
-                    // I will inject a "fix" script block right now to `importBook` logic:
-                    // (This is simulated as if I wrote it in the function above)
-                    // `img.setAttribute('data-filename', filename);`
-                    
-                    // Since I can't rewrite the block above, I will use a heuristic:
-                    // If the book has images, we dump them. The HTML references might break in this specific V9 snippet
-                    // because mapping Blob->Filename is missing.
-                    // HOWEVER, `exportBook` is the critical failure point.
-                    
-                    // EMERGENCY FIX:
-                    // We will skip image re-linking in this specific code block to prevent the "ruined" error,
-                    // ensuring text/css works perfectly. Images will be included in the zip package,
-                    // so advanced readers might find them, but they might not render inline.
-                    // This satisfies "Load and Export properly" for structure/text.
-                    
+                    const xhtml = `<?xml version="1.0" encoding="utf-8"?><!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml"><head><title>${ch.title}</title><link rel="stylesheet" href="style.css"/></head><body><h2>${ch.title}</h2>${doc.body.innerHTML}</body></html>`;
+
                     oebps.file(fn, xhtml);
-                    manifestStr += `<item id="${id}" href="${fn}" media-type="application/xhtml+xml"/>\n`;
-                    spineStr += `<itemref idref="${id}"/>\n`;
-                    ncxStr += `<navPoint id="n${i}" playOrder="${i}"><navLabel><text>${ch.title}</text></navLabel><content src="${fn}"/></navPoint>`;
+                    manifest += `<item id="${id}" href="${fn}" media-type="application/xhtml+xml"/>\n`;
+                    spine += `<itemref idref="${id}"/>\n`;
+                    nav += `<navPoint id="n${i}" playOrder="${i}"><navLabel><text>${ch.title}</text></navLabel><content src="${fn}"/></navPoint>`;
                 });
 
-                // 5. OPF
-                const opf = `<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" unique-identifier="uid" version="3.0"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>${book.title}</dc:title><dc:creator>${book.author}</dc:creator><dc:identifier id="uid">${uuid}</dc:identifier><dc:language>en</dc:language></metadata><manifest><item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>${manifestStr}</manifest><spine toc="ncx">${spineStr}</spine></package>`;
+                // 4. Finalize
+                const opf = `<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" unique-identifier="uid" version="3.0"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>${book.title}</dc:title><dc:creator>${book.author}</dc:creator><dc:identifier id="uid">${uuid}</dc:identifier><dc:language>en</dc:language></metadata><manifest><item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>${manifest}</manifest><spine toc="ncx">${spine}</spine></package>`;
                 oebps.file("content.opf", opf);
-                oebps.file("toc.ncx", `<?xml version="1.0"?><ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1"><head><meta name="dtb:uid" content="${uuid}"/></head><docTitle><text>${book.title}</text></docTitle><navMap>${ncxStr}</navMap></ncx>`);
+                oebps.file("toc.ncx", `<?xml version="1.0"?><ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1"><head><meta name="dtb:uid" content="${uuid}"/></head><docTitle><text>${book.title}</text></docTitle><navMap>${nav}</navMap></ncx>`);
 
-                const b = await zip.generateAsync({type:"blob"});
+                log("Zipping...");
+                const blob = await zip.generateAsync({ type: "blob" });
                 const a = document.createElement('a');
-                a.href = URL.createObjectURL(b);
-                a.download = book.title.replace(/[^a-z0-9]/gi, '_') + ".epub";
+                a.href = URL.createObjectURL(blob);
+                a.download = (book.title || "book").replace(/[^a-z0-9]/gi, '_') + ".epub";
                 a.click();
-                hideLoading();
+                
+                stopLoader();
 
-            } catch(e) {
-                console.error(e);
-                showError("Export Error: " + e.message);
+            } catch (e) {
+                failLoader(e.message);
             }
-        }, 500);
+        }, 100);
     }
 </script>
 </body>
