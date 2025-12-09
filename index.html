@@ -2,13 +2,15 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EPUB Studio v13 - Layout Fixed</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>EPUB Studio v14 - Mobile Ready</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         /* --- RESET & LAYOUT --- */
-        * { box-sizing: border-box; }
-        html, body { margin: 0; padding: 0; height: 100vh; overflow: hidden; background: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        
+        /* Use dvh (dynamic viewport height) for mobile browsers to handle address bars */
+        html, body { margin: 0; padding: 0; height: 100dvh; overflow: hidden; background: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
         body { display: flex; flex-direction: column; }
 
         /* --- LOADER --- */
@@ -18,43 +20,57 @@
         }
         #loader-overlay.active { display: flex; }
         .spinner {
-            width: 50px; height: 50px; border: 4px solid #e2e8f0; border-top: 4px solid #2563eb;
+            width: 40px; height: 40px; border: 4px solid #e2e8f0; border-top: 4px solid #2563eb;
             border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px;
         }
         @keyframes spin { 100% { transform: rotate(360deg); } }
-        #loader-msg { font-size: 1.2rem; font-weight: 600; color: #1e293b; margin-bottom: 10px; }
+        #loader-msg { font-size: 1.1rem; font-weight: 600; color: #1e293b; margin-bottom: 10px; }
         #loader-close {
-            padding: 8px 16px; background: #ef4444; color: white; border: none; border-radius: 4px;
-            cursor: pointer; display: none; margin-top: 15px;
+            padding: 10px 20px; background: #ef4444; color: white; border: none; border-radius: 6px;
+            cursor: pointer; display: none; margin-top: 15px; font-size: 16px;
         }
 
-        /* --- UI STRUCTURE --- */
+        /* --- HEADER --- */
         header {
             height: 60px; background: white; border-bottom: 1px solid #e2e8f0;
-            display: flex; align-items: center; justify-content: space-between; padding: 0 20px; flex-shrink: 0;
+            display: flex; align-items: center; justify-content: space-between; padding: 0 15px; flex-shrink: 0;
+            gap: 10px; z-index: 50;
         }
+
+        /* Mobile Menu Button (Hidden on Desktop) */
+        #mobile-menu-btn {
+            display: none; font-size: 24px; background: none; border: none; cursor: pointer; color: #334155; padding: 0 10px 0 0;
+        }
+
         .inputs { display: flex; gap: 10px; flex: 1; max-width: 600px; }
-        input[type="text"] { width: 100%; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; }
+        input[type="text"] { width: 100%; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; }
+        
         .actions { display: flex; gap: 10px; }
         .btn {
-            display: flex; align-items: center; gap: 6px; padding: 8px 16px;
+            display: flex; align-items: center; gap: 6px; padding: 8px 12px;
             background: white; border: 1px solid #cbd5e1; border-radius: 6px;
-            cursor: pointer; font-size: 14px; font-weight: 500; color: #334155;
+            cursor: pointer; font-size: 13px; font-weight: 500; color: #334155; white-space: nowrap;
         }
-        .btn:hover { background: #f8fafc; }
         .btn-primary { background: #2563eb; color: white; border: none; }
-        .btn-primary:hover { background: #1d4ed8; }
         input[type="file"] { display: none; }
 
-        main { display: flex; flex: 1; overflow: hidden; }
+        /* --- MAIN LAYOUT --- */
+        main { display: flex; flex: 1; overflow: hidden; position: relative; }
         
         /* SIDEBAR */
         aside {
             width: 260px; background: white; border-right: 1px solid #e2e8f0;
             display: flex; flex-direction: column; flex-shrink: 0;
+            z-index: 40; transition: transform 0.3s ease;
         }
+        
+        /* Mobile Overlay for Sidebar */
+        #sidebar-overlay {
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 30;
+        }
+
         .sidebar-tabs { display: flex; border-bottom: 1px solid #e2e8f0; }
-        .tab { flex: 1; padding: 10px; text-align: center; cursor: pointer; font-size: 13px; font-weight: 600; color: #64748b; background: #f8fafc; }
+        .tab { flex: 1; padding: 12px; text-align: center; cursor: pointer; font-size: 13px; font-weight: 600; color: #64748b; background: #f8fafc; }
         .tab.active { background: white; color: #2563eb; border-bottom: 2px solid #2563eb; }
         
         .sidebar-content { flex: 1; overflow-y: auto; display: none; }
@@ -62,40 +78,33 @@
 
         .chapter-list { list-style: none; padding: 0; margin: 0; }
         .chapter-item {
-            padding: 12px 16px; border-bottom: 1px solid #f1f5f9; cursor: pointer;
-            font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+            padding: 14px 16px; border-bottom: 1px solid #f1f5f9; cursor: pointer;
+            font-size: 1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
         .chapter-item.active { background: #eff6ff; color: #2563eb; border-left: 4px solid #2563eb; font-weight: 600; }
         
         .cover-preview { padding: 20px; text-align: center; }
-        #cover-img { max-width: 100%; height: auto; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 15px; min-height: 200px; background: #f1f5f9; object-fit: contain; }
-        .cover-btn { width: 100%; margin-bottom: 10px; }
+        #cover-img { max-width: 100%; height: auto; border: 1px solid #e2e8f0; margin-bottom: 15px; min-height: 150px; background: #f1f5f9; object-fit: contain; }
+        .cover-btn { width: 100%; justify-content: center; padding: 12px; }
 
         .sidebar-foot { padding: 12px; border-top: 1px solid #e2e8f0; }
-        .sidebar-foot button { width: 100%; }
+        .sidebar-foot button { width: 100%; justify-content: center; padding: 12px; }
 
-        /* EDITOR (LAYOUT FIX APPLIED HERE) */
+        /* EDITOR AREA */
         .editor-area {
             flex: 1; 
             background: #cbd5e1; 
-            overflow-y: auto; /* Scroll is on the container */
+            overflow-y: auto; 
             padding: 40px;
-            display: block; /* Removed flex center to allow natural height growth */
-            text-align: center; /* Centers the paper visually */
+            display: block; 
+            text-align: center;
+            -webkit-overflow-scrolling: touch; /* Smooth scroll iOS */
         }
         
         .paper {
-            width: 100%; 
-            max-width: 850px; 
-            min-height: 100%; 
-            height: fit-content; /* KEY FIX: Forces box to grow with text */
-            background: white;
-            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); 
-            padding: 60px;
-            margin: 0 auto; /* Center horizontally */
-            display: flex; 
-            flex-direction: column;
-            text-align: left; /* Reset text align */
+            width: 100%; max-width: 850px; min-height: 100%; height: fit-content;
+            background: white; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); 
+            padding: 60px; margin: 0 auto; display: flex; flex-direction: column; text-align: left;
         }
 
         .toolbar {
@@ -103,25 +112,45 @@
             border-bottom: 2px solid #f1f5f9; margin-bottom: 20px; z-index: 10;
             display: flex; gap: 8px; flex-wrap: wrap;
         }
-        .tool-btn { padding: 6px 12px; border: 1px solid #e2e8f0; background: white; border-radius: 4px; cursor: pointer; font-size: 14px; }
-        .tool-btn:hover { background: #f1f5f9; color: #2563eb; border-color: #2563eb; }
-
-        #chapter-title { font-size: 28px; font-weight: 800; border: none; outline: none; width: 100%; margin-bottom: 10px; font-family: serif; }
-        
-        #editor { 
-            flex: 1; 
-            outline: none; 
-            font-family: 'Georgia', serif; 
-            font-size: 18px; 
-            line-height: 1.7; 
-            /* Ensure editor itself grows */
-            overflow: visible; 
-            height: auto;
+        .tool-btn { 
+            padding: 8px 12px; border: 1px solid #e2e8f0; background: white; 
+            border-radius: 4px; cursor: pointer; font-size: 14px; flex-grow: 1; text-align: center;
         }
         
-        #editor p { margin-bottom: 1.2em; }
-        #editor img { max-width: 100%; height: auto; display: block; margin: 1.5em auto; cursor: default; }
-        #editor img:hover { outline: 2px solid #2563eb; }
+        #chapter-title { font-size: 28px; font-weight: 800; border: none; outline: none; width: 100%; margin-bottom: 10px; font-family: serif; }
+        #editor { flex: 1; outline: none; font-family: 'Georgia', serif; font-size: 18px; line-height: 1.7; overflow: visible; height: auto; }
+        #editor img { max-width: 100%; height: auto; display: block; margin: 1.5em auto; }
+
+        /* --- MOBILE RESPONSIVE STYLES --- */
+        @media (max-width: 768px) {
+            /* Header adjustments */
+            header { padding: 0 10px; }
+            #mobile-menu-btn { display: block; }
+            .inputs { display: none; } /* Hide title input in header on mobile to save space */
+            .actions .btn { padding: 8px; }
+            .actions span { display: none; } /* Hide text "Import", show icon only if space tight */
+
+            /* Sidebar as Drawer */
+            aside {
+                position: absolute; top: 0; left: 0; height: 100%; width: 80%; max-width: 300px;
+                transform: translateX(-100%); /* Hidden by default */
+                box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+            }
+            aside.open { transform: translateX(0); }
+            #sidebar-overlay.active { display: block; }
+
+            /* Editor adjustments */
+            .editor-area { padding: 0; background: white; }
+            .paper { box-shadow: none; padding: 20px 15px; margin: 0; min-height: 100dvh; }
+            
+            /* Typography mobile */
+            #chapter-title { font-size: 24px; margin-top: 10px; }
+            #editor { font-size: 17px; }
+            
+            /* Toolbar scrollable if too many items */
+            .toolbar { overflow-x: auto; white-space: nowrap; flex-wrap: nowrap; padding-bottom: 5px; }
+            .tool-btn { flex-grow: 0; min-width: 40px; }
+        }
     </style>
 </head>
 <body>
@@ -132,31 +161,39 @@
     <button id="loader-close" onclick="document.getElementById('loader-overlay').classList.remove('active')">Close</button>
 </div>
 
+<div id="sidebar-overlay" onclick="toggleSidebar()"></div>
+
 <header>
+    <button id="mobile-menu-btn" onclick="toggleSidebar()">☰</button>
+    
     <div class="inputs">
         <input type="text" id="meta-title" placeholder="Book Title">
         <input type="text" id="meta-author" placeholder="Author">
     </div>
+    
+    <div style="flex:1; font-weight:bold; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:none;" id="mobile-title-display">Untitled Book</div>
+
     <div class="actions">
         <label class="btn">
-            📂 Import
+            📂 <span class="desktop-text">Import</span>
             <input type="file" accept=".epub" onchange="importEPUB(this)">
         </label>
-        <button class="btn btn-primary" onclick="exportEPUB()">⬇ Export</button>
+        <button class="btn btn-primary" onclick="exportEPUB()">⬇ <span class="desktop-text">Export</span></button>
     </div>
 </header>
 
 <main>
-    <aside>
+    <aside id="sidebar">
         <div class="sidebar-tabs">
             <div class="tab active" onclick="switchTab('chapters')">Chapters</div>
-            <div class="tab" onclick="switchTab('cover')">Cover Settings</div>
+            <div class="tab" onclick="switchTab('cover')">Cover</div>
+            <div class="tab mobile-only" onclick="switchTab('settings')" style="display:none">Meta</div>
         </div>
 
         <div id="tab-chapters" class="sidebar-content active">
             <ul class="chapter-list" id="chapter-list"></ul>
             <div class="sidebar-foot">
-                <button class="btn" onclick="addChapter()">+ Add Chapter</button>
+                <button class="btn" onclick="addChapter()">+ New Chapter</button>
             </div>
         </div>
 
@@ -164,11 +201,17 @@
             <div class="cover-preview">
                 <img id="cover-img" src="" alt="No Cover">
                 <label class="btn cover-btn">
-                    📷 Upload New Cover
+                    📷 Upload Cover
                     <input type="file" accept="image/*" onchange="updateCover(this)">
                 </label>
-                <p style="font-size:12px; color:#64748b;">This image will appear as the book thumbnail.</p>
             </div>
+        </div>
+
+        <div id="tab-settings" class="sidebar-content" style="padding:20px">
+            <h4 style="margin-top:0">Book Metadata</h4>
+            <p style="font-size:12px; color:#666">Edit book details here.</p>
+            <input type="text" id="mobile-meta-title" placeholder="Book Title" style="margin-bottom:10px; width:100%; padding:10px; border:1px solid #ccc; border-radius:4px;" oninput="syncMeta('title', this.value)">
+            <input type="text" id="mobile-meta-author" placeholder="Author Name" style="width:100%; padding:10px; border:1px solid #ccc; border-radius:4px;" oninput="syncMeta('author', this.value)">
         </div>
     </aside>
 
@@ -178,28 +221,57 @@
             <div class="toolbar">
                 <button class="tool-btn" onclick="format('bold')"><b>B</b></button>
                 <button class="tool-btn" onclick="format('italic')"><i>I</i></button>
-                <button class="tool-btn" onclick="format('formatBlock','h2')">Heading</button>
-                <button class="tool-btn" onclick="format('formatBlock','p')">Text</button>
+                <button class="tool-btn" onclick="format('formatBlock','h2')">H2</button>
+                <button class="tool-btn" onclick="format('formatBlock','p')">P</button>
                 <label class="tool-btn">
-                    🖼 Insert Image
+                    🖼 Img
                     <input type="file" accept="image/*" style="display:none" onchange="insertImageToEditor(this)">
                 </label>
-                <button class="tool-btn" onclick="format('removeFormat')">Clear Format</button>
+                <button class="tool-btn" onclick="format('removeFormat')">Clear</button>
             </div>
             <div id="editor" contenteditable="true" oninput="saveCurrent()">
-                <p>Welcome. Import an EPUB or start writing.</p>
+                <p>Welcome. Tap menu ☰ to start.</p>
             </div>
         </div>
     </div>
 </main>
 
 <script>
+    // --- RESPONSIVE LOGIC ---
+    function toggleSidebar() {
+        const sidebar = document.getElementById('sidebar');
+        const overlay = document.getElementById('sidebar-overlay');
+        sidebar.classList.toggle('open');
+        overlay.classList.toggle('active');
+    }
+
+    // Check if mobile to show extra tab
+    if (window.innerWidth <= 768) {
+        document.querySelector('.tab.mobile-only').style.display = 'block';
+        document.getElementById('mobile-title-display').style.display = 'block';
+        document.querySelector('.inputs').style.display = 'none';
+        
+        // Update desktop text visiblity
+        document.querySelectorAll('.desktop-text').forEach(el => el.style.display = 'none');
+    }
+
+    function syncMeta(field, val) {
+        if(field === 'title') {
+            document.getElementById('meta-title').value = val;
+            document.getElementById('mobile-meta-title').value = val;
+            document.getElementById('mobile-title-display').innerText = val || "Untitled Book";
+            book.title = val;
+        } else {
+            document.getElementById('meta-author').value = val;
+            document.getElementById('mobile-meta-author').value = val;
+            book.author = val;
+        }
+    }
+
     // --- GLOBAL STATE ---
     let book = { 
         title: "", author: "", css: "", 
-        assets: {}, // filename -> blob
-        coverPath: null,
-        chapters: [] // {id, title, content}
+        assets: {}, coverPath: null, chapters: [] 
     };
     let currentId = null;
 
@@ -214,7 +286,6 @@
         document.getElementById('loader-msg').innerText = "Error: " + err;
         document.querySelector('.spinner').style.display = 'none';
         document.getElementById('loader-close').style.display = 'block';
-        console.error(err);
     }
     function stopLoader() {
         document.getElementById('loader-overlay').classList.remove('active');
@@ -224,29 +295,29 @@
     function switchTab(tab) {
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
         document.querySelectorAll('.sidebar-content').forEach(c => c.classList.remove('active'));
-        if(tab === 'chapters') {
-            document.querySelectorAll('.tab')[0].classList.add('active');
-            document.getElementById('tab-chapters').classList.add('active');
-        } else {
-            document.querySelectorAll('.tab')[1].classList.add('active');
-            document.getElementById('tab-cover').classList.add('active');
-            renderCoverPreview();
-        }
+        
+        let index = 0;
+        if(tab === 'cover') index = 1;
+        if(tab === 'settings') index = 2;
+        
+        document.querySelectorAll('.tab')[index].classList.add('active');
+        document.getElementById('tab-' + tab).classList.add('active');
+        
+        if(tab === 'cover') renderCoverPreview();
     }
 
     // --- IMPORT ENGINE ---
     async function importEPUB(input) {
         if (!input.files[0]) return;
         startLoader("Importing...");
-        
+        if(window.innerWidth <= 768) toggleSidebar(); // close menu on mobile
+
         try {
             const zip = new JSZip();
             const content = await zip.loadAsync(input.files[0]);
             
-            // Reset
             book = { title: "", author: "", css: "", assets: {}, coverPath: null, chapters: [] };
             
-            // Find OPF
             let opfPath = null;
             const container = content.file("META-INF/container.xml");
             if (container) {
@@ -262,13 +333,11 @@
             const parser = new DOMParser();
             const xml = parser.parseFromString(opfTxt, "text/xml");
 
-            // Meta
-            book.title = xml.getElementsByTagName("dc:title")[0]?.textContent || "Untitled";
-            book.author = xml.getElementsByTagName("dc:creator")[0]?.textContent || "Unknown";
-            document.getElementById('meta-title').value = book.title;
-            document.getElementById('meta-author').value = book.author;
+            const title = xml.getElementsByTagName("dc:title")[0]?.textContent || "Untitled";
+            const author = xml.getElementsByTagName("dc:creator")[0]?.textContent || "Unknown";
+            syncMeta('title', title);
+            syncMeta('author', author);
 
-            // COVER DETECTION
             let coverId = null;
             const metas = xml.getElementsByTagName("meta");
             for(let m of metas) {
@@ -282,7 +351,6 @@
                 if(item.getAttribute("properties") === "cover-image") coverId = id;
             });
 
-            // Load Assets
             for (let id in manifest) {
                 const href = manifest[id];
                 const fullPath = opfDir ? `${opfDir}/${href}` : href;
@@ -297,7 +365,6 @@
                 }
             }
 
-            // Load Chapters
             const spine = Array.from(xml.getElementsByTagName("itemref"));
             for (let i = 0; i < spine.length; i++) {
                 const id = spine[i].getAttribute("idref");
@@ -332,7 +399,6 @@
             if(book.chapters.length > 0) loadChapter(book.chapters[0].id);
             else addChapter();
             
-            renderCoverPreview();
             stopLoader();
 
         } catch (e) {
@@ -346,7 +412,7 @@
         return null;
     }
 
-    // --- COVER & IMAGE LOGIC ---
+    // --- LOGIC ---
     function renderCoverPreview() {
         const img = document.getElementById('cover-img');
         if(book.coverPath && book.assets[book.coverPath]) {
@@ -390,7 +456,6 @@
         input.value = "";
     }
 
-    // --- CHAPTER LOGIC ---
     function renderList() {
         const list = document.getElementById('chapter-list');
         list.innerHTML = '';
@@ -398,7 +463,10 @@
             const li = document.createElement('li');
             li.className = `chapter-item ${c.id === currentId ? 'active' : ''}`;
             li.innerText = c.title || `Chapter ${i+1}`;
-            li.onclick = () => loadChapter(c.id);
+            li.onclick = () => {
+                loadChapter(c.id);
+                if(window.innerWidth <= 768) toggleSidebar();
+            };
             list.appendChild(li);
         });
     }
@@ -418,16 +486,14 @@
             c.content = document.getElementById('editor').innerHTML;
             renderList();
         }
-        book.title = document.getElementById('meta-title').value;
-        book.author = document.getElementById('meta-author').value;
     }
 
     function addChapter() {
         book.chapters.push({ id: Date.now(), title: "New Chapter", content: "<p>Start writing...</p>" });
         loadChapter(book.chapters[book.chapters.length-1].id);
+        if(window.innerWidth <= 768) toggleSidebar();
     }
 
-    // --- EXPORT ENGINE ---
     async function exportEPUB() {
         startLoader("Exporting...");
         setTimeout(async () => {
@@ -441,17 +507,13 @@
                 const oebps = zip.folder("OEBPS");
                 const imgFolder = oebps.folder("images");
 
-                // Assets
                 let assetManifest = "";
                 for(let name in book.assets) {
                     imgFolder.file(name, book.assets[name]);
                     const mime = name.endsWith('png') ? 'image/png' : 'image/jpeg';
                     let id = "img_" + name.replace(/[^a-z0-9]/gi, '');
-                    
                     if(name === book.coverPath) id = "cover-image";
-                    let properties = "";
-                    if(name === book.coverPath) properties = ' properties="cover-image"';
-                    
+                    let properties = (name === book.coverPath) ? ' properties="cover-image"' : '';
                     assetManifest += `<item id="${id}" href="images/${name}" media-type="${mime}"${properties}/>\n`;
                 }
 
@@ -460,13 +522,11 @@
                 let manifest = `<item id="css" href="style.css" media-type="text/css"/>\n` + assetManifest;
                 let spine = "";
                 let nav = "";
-
                 const serializer = new XMLSerializer();
 
                 book.chapters.forEach((ch, i) => {
                     const fn = `ch${i+1}.xhtml`;
                     const id = `c${i+1}`;
-
                     const parser = new DOMParser();
                     const doc = parser.parseFromString(ch.content, "text/html");
 
@@ -477,19 +537,10 @@
                         if(!img.hasAttribute('alt')) img.setAttribute('alt', '');
                     });
 
-                    // Strict Serialize
                     let xmlBody = serializer.serializeToString(doc.body);
                     xmlBody = xmlBody.replace(/^<body[^>]*>/i, '').replace(/<\/body>$/i, '');
 
-                    const xhtml = `<?xml version="1.0" encoding="utf-8"?>
-<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml">
-<head><title>${ch.title}</title><link rel="stylesheet" href="style.css"/></head>
-<body>
-<h2>${ch.title}</h2>
-${xmlBody}
-</body>
-</html>`;
+                    const xhtml = `<?xml version="1.0" encoding="utf-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>${ch.title}</title><link rel="stylesheet" href="style.css"/></head><body><h2>${ch.title}</h2>${xmlBody}</body></html>`;
 
                     oebps.file(fn, xhtml);
                     manifest += `<item id="${id}" href="${fn}" media-type="application/xhtml+xml"/>\n`;
@@ -497,9 +548,7 @@ ${xmlBody}
                     nav += `<navPoint id="n${i}" playOrder="${i}"><navLabel><text>${ch.title}</text></navLabel><content src="${fn}"/></navPoint>`;
                 });
 
-                let coverMeta = "";
-                if(book.coverPath) coverMeta = `<meta name="cover" content="cover-image" />`;
-
+                let coverMeta = book.coverPath ? `<meta name="cover" content="cover-image" />` : "";
                 const opf = `<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" unique-identifier="uid" version="3.0"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>${book.title}</dc:title><dc:creator>${book.author}</dc:creator><dc:identifier id="uid">${uuid}</dc:identifier><dc:language>en</dc:language>${coverMeta}</metadata><manifest><item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>${manifest}</manifest><spine toc="ncx">${spine}</spine></package>`;
                 
                 oebps.file("content.opf", opf);
