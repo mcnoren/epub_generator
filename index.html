@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EPUB Studio v22 - Exact TOC Import</title>
+    <title>EPUB Studio v23 - Image Fix</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         /* --- RESET & LAYOUT --- */
@@ -26,11 +26,17 @@
         .actions { display: flex; gap: 8px; }
         .btn { display: flex; align-items: center; gap: 5px; padding: 6px 12px; background: white; border: 1px solid #cbd5e1; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500; color: #334155; }
         .btn-primary { background: #2563eb; color: white; border: none; }
-        .btn-danger { background: #fee2e2; color: #dc2626; border-color: #fecaca; }
         
         #main-toolbar { height: 45px; background: #f1f5f9; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; padding: 0 10px; gap: 5px; overflow-x: auto; white-space: nowrap; flex-shrink: 0; z-index: 40; }
         .tool-btn { padding: 5px 10px; border: 1px solid transparent; background: white; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500; color: #475569; border-color: #e2e8f0; display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
         .tool-btn:active { background: #e2e8f0; }
+
+        /* --- PREVIEW THUMBNAIL (NEW) --- */
+        #toolbar-preview {
+            width: 30px; height: 30px; border-radius: 4px; border: 1px solid #cbd5e1;
+            object-fit: cover; margin-left: 5px; background: #e2e8f0; display: none;
+        }
+        #toolbar-preview.active { display: block; }
 
         /* --- IMAGE TOOLBAR --- */
         #img-toolbar { position: absolute; display: none; background: #1e293b; padding: 8px; border-radius: 6px; gap: 8px; z-index: 100; box-shadow: 0 4px 12px rgba(0,0,0,0.2); transform: translate(-50%, -100%); margin-top: -10px; }
@@ -67,7 +73,19 @@
         #editor { flex: 1; outline: none; font-family: 'Georgia', serif; font-size: 18px; line-height: 1.5; }
         #editor p { margin: 0; padding: 0; min-height: 1em; }
         #editor:empty:before { content: attr(placeholder); color: #94a3b8; pointer-events: none; display: block; }
-        #editor img { max-width: 100% !important; height: auto !important; display: block; margin: 10px auto; cursor: pointer; box-sizing: border-box; object-fit: contain; }
+        
+        /* IMAGE FIXES */
+        #editor img { 
+            max-width: 100% !important; 
+            height: auto !important; 
+            display: block; 
+            margin: 10px auto; 
+            cursor: pointer; 
+            box-sizing: border-box; 
+            object-fit: contain;
+            /* Default small inline size for new inserts */
+            max-height: 400px; 
+        }
         #editor img.selected { outline: 3px solid #2563eb; box-shadow: 0 0 10px rgba(37, 99, 235, 0.3); }
 
         @media (max-width: 768px) {
@@ -126,10 +144,11 @@
     <button class="tool-btn" onclick="format('formatBlock','h2')">Header</button>
     <button class="tool-btn" onclick="format('formatBlock','p')">Text</button>
     <button class="tool-btn" onclick="removeGaps()" title="Removes empty lines">✂ Remove Gaps</button>
-    <label class="tool-btn">
+    <label class="tool-btn" style="padding-right:5px;">
         🖼 Image
         <input type="file" accept="image/*" style="display:none" onchange="insertImageToEditor(this)">
     </label>
+    <img id="toolbar-preview" src="" alt="">
     <button class="tool-btn" onclick="format('removeFormat')">Clear Format</button>
 </div>
 
@@ -204,7 +223,7 @@
     }
 
     function clearAll() {
-        if(!confirm("⚠️ WARNING: This will delete everything. Are you sure?")) return;
+        if(!confirm("Are you sure? This deletes everything.")) return;
         book = { title: "", author: "", css: "", assets: {}, coverPath: null, chapters: [] };
         syncMeta('title', ''); syncMeta('author', '');
         renderCoverPreview();
@@ -214,12 +233,10 @@
 
     function removeGaps() {
         const editor = document.getElementById('editor');
-        const paragraphs = editor.querySelectorAll('p, div, h1, h2, h3, h4, h5, h6');
-        let count = 0;
-        paragraphs.forEach(p => {
-            if(p.innerText.trim() === '' && p.querySelector('img') === null) { p.remove(); count++; }
+        editor.querySelectorAll('p, div, h1, h2, h3').forEach(p => {
+            if(p.innerText.trim() === '' && p.querySelector('img') === null) p.remove();
         });
-        Array.from(editor.childNodes).forEach(node => { if(node.nodeName === 'BR') { node.remove(); count++; } });
+        Array.from(editor.childNodes).forEach(node => { if(node.nodeName === 'BR') node.remove(); });
         saveCurrent();
     }
 
@@ -272,6 +289,7 @@
         }
     }
 
+    // --- IMPORT ENGINE ---
     function resolvePath(base, relative) {
         const stack = base.split('/'); stack.pop();
         const parts = relative.split('/');
@@ -291,9 +309,9 @@
         try {
             const zip = new JSZip();
             const content = await zip.loadAsync(input.files[0]);
-            
             book = { title: "", author: "", css: "", assets: {}, coverPath: null, chapters: [] };
             
+            // OPF Search
             let opfPath = null;
             const container = content.file("META-INF/container.xml");
             if (container) {
@@ -325,7 +343,7 @@
                 if(item.getAttribute("properties") === "cover-image") coverId = id;
             });
 
-            // 1. ASSET LOADER
+            // 1. Assets
             for (let id in manifest) {
                 const href = manifest[id];
                 const fullPath = resolvePath(opfPath, href);
@@ -340,27 +358,22 @@
                 }
             }
 
-            // 2. TOC MAP PARSER (The New Fix)
+            // 2. TOC Map
             let tocMap = {};
             const spineTag = xml.getElementsByTagName("spine")[0];
-            const tocId = spineTag.getAttribute("toc"); // Classic EPUB2 TOC ID
-            
+            const tocId = spineTag.getAttribute("toc");
             if (tocId && manifest[tocId]) {
                 const tocHref = manifest[tocId];
                 const fullTocPath = resolvePath(opfPath, tocHref);
                 const tocFile = findFile(content, fullTocPath);
-                
                 if (tocFile) {
                     const tocTxt = await tocFile.async("text");
                     const tocXml = parser.parseFromString(tocTxt, "text/xml");
-                    
-                    // Parse navPoints
                     Array.from(tocXml.getElementsByTagName("navPoint")).forEach(np => {
                         const label = np.getElementsByTagName("text")[0]?.textContent;
                         let src = np.getElementsByTagName("content")[0]?.getAttribute("src");
                         if (src && label) {
                             src = decodeURI(src);
-                            // Remove anchor (#) for mapping if present
                             if(src.includes('#')) src = src.split('#')[0];
                             tocMap[src] = label.trim();
                         }
@@ -368,7 +381,7 @@
                 }
             }
 
-            // 3. SPINE & CHAPTER LOADER
+            // 3. Chapters
             const spine = Array.from(xml.getElementsByTagName("itemref"));
             for (let i = 0; i < spine.length; i++) {
                 const id = spine[i].getAttribute("idref");
@@ -381,33 +394,36 @@
                 if (fileObj) {
                     const html = await fileObj.async("text");
                     const doc = parser.parseFromString(html, "text/html");
-                    processDocImages(doc);
-
-                    // TITLE LOGIC: TOC Map > H1 > H2 > Meta
-                    let chTitle = "";
                     
-                    // Try TOC Map using the href (filename)
-                    // Href in manifest might contain folder structure, clean it to match TOC potentially
-                    // But usually, TOC src matches Manifest href structure relative to OPF.
-                    // Let's try exact match on href first.
+                    // DEEP IMAGE SCAN
+                    // Fixes "Image Tag" error by looking for filename in all assets
+                    doc.querySelectorAll('img').forEach(img => {
+                        const src = img.getAttribute('src');
+                        if(src) {
+                            // Try exact name match from path
+                            let filename = src.split('/').pop();
+                            // If not in assets, try fuzzy match
+                            if(!book.assets[filename]) {
+                                filename = Object.keys(book.assets).find(k => k.toLowerCase() === filename.toLowerCase());
+                            }
+                            if(filename && book.assets[filename]) {
+                                img.setAttribute('src', URL.createObjectURL(book.assets[filename]));
+                                img.setAttribute('data-filename', filename);
+                            }
+                        }
+                    });
+
+                    // Title Logic
+                    let chTitle = "";
                     if (tocMap[href]) chTitle = tocMap[href];
-                    // Sometimes TOC uses just filename
                     else {
                         const simpleName = href.split('/').pop();
                         if (tocMap[simpleName]) chTitle = tocMap[simpleName];
                     }
-
-                    // Fallback to text scraping if TOC failed
                     if (!chTitle) {
                         const h1 = doc.querySelector('h1');
                         if (h1 && h1.innerText.trim()) chTitle = h1.innerText.trim();
-                        else {
-                            const h2 = doc.querySelector('h2');
-                            if (h2 && h2.innerText.trim()) chTitle = h2.innerText.trim();
-                        }
                     }
-
-                    // Final Fallback
                     if (!chTitle) chTitle = `Chapter ${i+1}`;
 
                     book.chapters.push({
@@ -426,22 +442,12 @@
         }
     }
 
-    function processDocImages(doc) {
-        doc.querySelectorAll('img').forEach(img => {
-            const src = img.getAttribute('src');
-            if(src) {
-                const filename = src.split('/').pop();
-                if(book.assets[filename]) {
-                    img.setAttribute('src', URL.createObjectURL(book.assets[filename]));
-                    img.setAttribute('data-filename', filename);
-                }
-            }
-        });
-    }
-
     function findFile(zip, path) {
         if(zip.file(path)) return zip.file(path);
         for(let k in zip.files) if(k.toLowerCase() === path.toLowerCase()) return zip.files[k];
+        // Brute force check just filename
+        const simpleName = path.split('/').pop();
+        for(let k in zip.files) if(k.split('/').pop().toLowerCase() === simpleName.toLowerCase()) return zip.files[k];
         return null;
     }
 
@@ -470,12 +476,14 @@
         book.assets[filename] = file;
         const url = URL.createObjectURL(file);
         
+        // Update Preview
+        const preview = document.getElementById('toolbar-preview');
+        preview.src = url;
+        preview.classList.add('active');
+        
         const img = document.createElement('img');
         img.src = url;
         img.setAttribute('data-filename', filename);
-        img.style.maxWidth = "100%";
-        img.style.display = "block";
-        img.style.margin = "10px auto";
         img.setAttribute('alt', '');
         
         const sel = document.getSelection();
@@ -497,17 +505,14 @@
         book.chapters.forEach((c, i) => {
             const li = document.createElement('li');
             li.className = `chapter-item ${c.id === currentId ? 'active' : ''}`;
-            
             const span = document.createElement('span');
             span.innerText = c.title || `Chapter ${i+1}`;
             li.appendChild(span);
-            
             const del = document.createElement('div');
             del.innerHTML = '🗑';
             del.className = 'delete-icon';
             del.onclick = (e) => deleteChapter(c.id, e);
             li.appendChild(del);
-
             li.onclick = () => {
                 loadChapter(c.id);
                 if(window.innerWidth <= 768) toggleSidebar();
