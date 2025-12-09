@@ -3,16 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EPUB Studio v2</title>
+    <title>EPUB Studio v3 - Import & Edit</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         :root {
-            --primary: #4f46e5; /* Indigo */
+            --primary: #4f46e5;
             --bg: #f3f4f6;
             --surface: #ffffff;
             --border: #e5e7eb;
             --text: #1f2937;
-            --text-light: #6b7280;
         }
 
         body {
@@ -34,43 +33,19 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
             z-index: 10;
         }
 
-        .book-meta {
-            display: flex;
-            gap: 0.5rem;
-            align-items: center;
-        }
-
-        .stats {
-            margin-left: 1rem;
-            font-size: 0.85rem;
-            color: var(--text-light);
-            background: var(--bg);
-            padding: 0.25rem 0.75rem;
-            border-radius: 12px;
-        }
-
+        .book-meta { display: flex; gap: 0.5rem; }
         input[type="text"] {
             padding: 0.5rem;
             border: 1px solid var(--border);
             border-radius: 6px;
-            font-size: 14px;
-            transition: border-color 0.2s;
         }
 
-        input[type="text"]:focus {
-            outline: none;
-            border-color: var(--primary);
-        }
-
-        .btn-group {
-            display: flex;
-            gap: 0.5rem;
-        }
-
+        .btn-group { display: flex; gap: 0.5rem; align-items: center; }
+        
         button {
             background: var(--primary);
             color: white;
@@ -79,22 +54,25 @@
             border-radius: 6px;
             cursor: pointer;
             font-weight: 500;
-            font-size: 0.9rem;
-            transition: opacity 0.2s;
         }
-
-        button:hover {
-            opacity: 0.9;
-        }
-
-        button.danger {
-            background: #fee2e2;
-            color: #ef4444;
-        }
+        button:hover { opacity: 0.9; }
         
-        button.danger:hover {
-            background: #fecaca;
+        button.secondary { background: white; color: var(--text); border: 1px solid var(--border); }
+        button.secondary:hover { background: #f9fafb; }
+
+        input[type="file"] { display: none; }
+        .upload-label {
+            cursor: pointer;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 5px;
         }
+        .upload-label:hover { background: #f9fafb; }
 
         /* Main Layout */
         main {
@@ -111,144 +89,119 @@
             display: flex;
             flex-direction: column;
         }
-
-        .sidebar-header {
-            padding: 1rem;
-            font-weight: 600;
-            color: var(--text-light);
-            text-transform: uppercase;
-            font-size: 0.75rem;
-            letter-spacing: 0.05em;
-        }
-
-        .chapter-list {
-            flex: 1;
-            overflow-y: auto;
-            list-style: none;
-            padding: 0;
-            margin: 0;
-        }
-
+        .chapter-list { flex: 1; overflow-y: auto; list-style: none; padding: 0; margin: 0; }
         .chapter-item {
-            padding: 1rem 1.5rem;
+            padding: 1rem;
             cursor: pointer;
             border-bottom: 1px solid var(--border);
-            transition: background 0.2s;
-            font-size: 0.95rem;
             display: flex;
             justify-content: space-between;
         }
+        .chapter-item.active { background: #eef2ff; border-left: 4px solid var(--primary); color: var(--primary); }
+        .sidebar-actions { padding: 1rem; border-top: 1px solid var(--border); }
+        .sidebar-actions button { width: 100%; }
 
-        .chapter-item:hover {
-            background: #f9fafb;
-        }
-
-        .chapter-item.active {
-            background: #eef2ff;
-            border-left: 4px solid var(--primary);
-            color: var(--primary);
-            font-weight: 500;
-        }
-
-        .sidebar-actions {
-            padding: 1rem;
-            border-top: 1px solid var(--border);
-            background: var(--bg);
-        }
-
-        .sidebar-actions button {
-            width: 100%;
-            background: white;
-            color: var(--primary);
-            border: 1px solid var(--primary);
-        }
-        .sidebar-actions button:hover {
-            background: #eef2ff;
-        }
-
-        /* Editor */
+        /* Editor Area */
         section.editor-wrapper {
-            background: #fafafa;
+            background: #e5e5e5;
             overflow-y: auto;
             display: flex;
             justify-content: center;
+            padding: 2rem;
         }
 
         .paper {
             background: white;
             width: 100%;
             max-width: 800px;
-            min-height: 100%;
+            min-height: 100%; /* Fill space */
             padding: 4rem 5rem;
-            box-shadow: 0 0 20px rgba(0,0,0,0.02);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
             box-sizing: border-box;
             display: flex;
             flex-direction: column;
         }
 
+        /* Toolbar */
+        .toolbar {
+            position: sticky;
+            top: 0;
+            background: white;
+            padding: 0.5rem 0;
+            border-bottom: 2px solid #f3f4f6;
+            margin-bottom: 1rem;
+            display: flex;
+            gap: 0.5rem;
+            z-index: 5;
+        }
+        .toolbar button {
+            background: white;
+            color: #4b5563;
+            border: 1px solid #e5e7eb;
+            padding: 0.25rem 0.5rem;
+            font-size: 0.8rem;
+        }
+        .toolbar button:hover { background: #f3f4f6; }
+
+        /* Rich Text Input */
         input#chapter-title {
             font-size: 2rem;
             font-weight: 800;
             border: none;
-            margin-bottom: 1.5rem;
+            margin-bottom: 1rem;
             width: 100%;
             font-family: 'Times New Roman', serif;
-        }
-
-        input#chapter-title::placeholder {
-            color: #d1d5db;
-        }
-
-        input#chapter-title:focus {
             outline: none;
         }
 
-        textarea#chapter-body {
+        #rich-editor {
             flex: 1;
-            resize: none;
-            border: none;
-            font-size: 1.2rem;
-            line-height: 1.8;
-            font-family: 'Times New Roman', Georgia, serif;
             outline: none;
-            color: #374151;
-            min-height: 60vh;
+            font-size: 1.15rem;
+            line-height: 1.6;
+            font-family: 'Times New Roman', Georgia, serif;
+            text-align: justify;
         }
+        
+        /* Simulating the "Novel Look" inside the editor */
+        #rich-editor p {
+            margin-top: 0;
+            margin-bottom: 0;
+            text-indent: 1.5em;
+        }
+        #rich-editor h1, #rich-editor h2 { text-align: center; }
+        #rich-editor img { max-width: 100%; height: auto; display: block; margin: 1rem auto; }
 
-        /* Save Indicator */
-        #save-status {
-            font-size: 0.8rem;
-            color: #10b981;
-            margin-right: 1rem;
-            opacity: 0;
-            transition: opacity 0.5s;
+        /* Loading Overlay */
+        #loader {
+            position: fixed; inset: 0; background: rgba(255,255,255,0.9);
+            display: flex; justify-content: center; align-items: center;
+            z-index: 100; font-size: 1.5rem; color: var(--primary);
+            display: none;
         }
-        #save-status.show {
-            opacity: 1;
-        }
-
     </style>
 </head>
 <body>
 
+<div id="loader">Processing EPUB...</div>
+
 <header>
     <div class="book-meta">
-        <input type="text" id="book-title" placeholder="Book Title" oninput="saveData()">
-        <input type="text" id="book-author" placeholder="Author Name" oninput="saveData()">
-        <span class="stats" id="word-count">0 words</span>
+        <input type="text" id="book-title" placeholder="Book Title">
+        <input type="text" id="book-author" placeholder="Author">
     </div>
     <div class="btn-group">
-        <span id="save-status">Saved</span>
-        <button class="danger" onclick="resetBook()" title="Clear all data">Reset</button>
-        <button onclick="generateEPUB()">Download EPUB</button>
+        <label class="upload-label">
+            Import EPUB
+            <input type="file" id="file-input" accept=".epub" onchange="importEPUB(this)">
+        </label>
+        <button onclick="generateEPUB()">Export EPUB</button>
     </div>
 </header>
 
 <main>
     <aside>
-        <div class="sidebar-header">Table of Contents</div>
-        <ul class="chapter-list" id="chapter-list">
-            </ul>
+        <ul class="chapter-list" id="chapter-list"></ul>
         <div class="sidebar-actions">
             <button onclick="addNewChapter()">+ New Chapter</button>
         </div>
@@ -256,8 +209,19 @@
 
     <section class="editor-wrapper">
         <div class="paper">
-            <input type="text" id="chapter-title" placeholder="Chapter Title" oninput="updateCurrentChapter()">
-            <textarea id="chapter-body" placeholder="Start writing..." oninput="updateCurrentChapter()"></textarea>
+            <input type="text" id="chapter-title" placeholder="Chapter Title" oninput="saveCurrentState()">
+            
+            <div class="toolbar">
+                <button onclick="document.execCommand('bold')"><b>B</b></button>
+                <button onclick="document.execCommand('italic')"><i>I</i></button>
+                <button onclick="document.execCommand('formatBlock', false, 'h2')">H2</button>
+                <button onclick="document.execCommand('formatBlock', false, 'p')">P</button>
+                <button onclick="document.execCommand('removeFormat')">Clear</button>
+            </div>
+
+            <div id="rich-editor" contenteditable="true" oninput="saveCurrentState()">
+                <p>Start writing here...</p>
+            </div>
         </div>
     </section>
 </main>
@@ -267,86 +231,15 @@
     let chapters = [];
     let currentChapterId = null;
 
-    // --- Initialization ---
-    window.onload = function() {
-        loadData();
-    };
+    // --- Core Logic ---
 
-    // --- Local Storage Logic (Auto-Save) ---
-    function loadData() {
-        const savedChapters = localStorage.getItem('epub_chapters');
-        const savedTitle = localStorage.getItem('epub_title');
-        const savedAuthor = localStorage.getItem('epub_author');
-
-        if (savedChapters) {
-            chapters = JSON.parse(savedChapters);
-            document.getElementById('book-title').value = savedTitle || '';
-            document.getElementById('book-author').value = savedAuthor || '';
-        } else {
-            // Default start
-            chapters = [{ id: Date.now(), title: "Chapter 1", content: "It was the best of times, it was the worst of times..." }];
-        }
-        
-        if (chapters.length > 0) {
-            selectChapter(chapters[0].id);
-        }
-        updateWordCount();
-    }
-
-    function saveData() {
-        localStorage.setItem('epub_chapters', JSON.stringify(chapters));
-        localStorage.setItem('epub_title', document.getElementById('book-title').value);
-        localStorage.setItem('epub_author', document.getElementById('book-author').value);
-        
-        // Show saved indicator
-        const indicator = document.getElementById('save-status');
-        indicator.classList.add('show');
-        setTimeout(() => indicator.classList.remove('show'), 2000);
-        
-        updateWordCount();
-    }
-
-    function resetBook() {
-        if(confirm("Are you sure? This will delete all your chapters.")) {
-            localStorage.clear();
-            location.reload();
-        }
-    }
-
-    function updateWordCount() {
-        let totalWords = 0;
-        chapters.forEach(c => {
-            const words = c.content.trim().split(/\s+/).length;
-            if(c.content.trim() === '') return;
-            totalWords += words;
-        });
-        document.getElementById('word-count').textContent = `${totalWords} words`;
-    }
-
-    // --- UI Logic ---
     function renderList() {
         const list = document.getElementById('chapter-list');
         list.innerHTML = '';
         chapters.forEach((chapter, index) => {
             const li = document.createElement('li');
             li.className = `chapter-item ${chapter.id === currentChapterId ? 'active' : ''}`;
-            
-            const titleSpan = document.createElement('span');
-            titleSpan.textContent = chapter.title || `Chapter ${index + 1}`;
-            li.appendChild(titleSpan);
-
-            // Delete button (small x)
-            if(chapters.length > 1) {
-                const delBtn = document.createElement('span');
-                delBtn.innerHTML = "&times;";
-                delBtn.style.color = "#9ca3af";
-                delBtn.onclick = (e) => {
-                    e.stopPropagation();
-                    deleteChapter(chapter.id);
-                };
-                li.appendChild(delBtn);
-            }
-
+            li.innerHTML = `<span>${chapter.title || 'Chapter ' + (index+1)}</span>`;
             li.onclick = () => selectChapter(chapter.id);
             list.appendChild(li);
         });
@@ -358,101 +251,189 @@
         if(!chapter) return;
         
         document.getElementById('chapter-title').value = chapter.title;
-        document.getElementById('chapter-body').value = chapter.content;
+        document.getElementById('rich-editor').innerHTML = chapter.content; // Load HTML
         renderList();
     }
 
     function addNewChapter() {
         const newId = Date.now();
-        chapters.push({ id: newId, title: "New Chapter", content: "" });
+        chapters.push({ id: newId, title: "New Chapter", content: "<p>New chapter content...</p>" });
         selectChapter(newId);
-        saveData();
     }
 
-    function deleteChapter(id) {
-        if(confirm("Delete this chapter?")) {
-            chapters = chapters.filter(c => c.id !== id);
-            if(chapters.length > 0) {
-                selectChapter(chapters[chapters.length-1].id);
-            }
-            saveData();
-        }
-    }
-
-    function updateCurrentChapter() {
+    function saveCurrentState() {
         const chapter = chapters.find(c => c.id === currentChapterId);
         if(chapter) {
             chapter.title = document.getElementById('chapter-title').value;
-            chapter.content = document.getElementById('chapter-body').value;
+            chapter.content = document.getElementById('rich-editor').innerHTML; // Save HTML
             
-            // Debounce list render to keep UI snappy
+            // Update list name if title changes
             const activeItem = document.querySelector('.chapter-item.active span');
             if(activeItem) activeItem.textContent = chapter.title;
-            
-            saveData();
         }
     }
 
-    // --- EPUB Generation Logic ---
+    // Initialize default if empty
+    if(chapters.length === 0) addNewChapter();
+
+
+    // --- IMPORT LOGIC (The Hard Part) ---
+
+    async function importEPUB(input) {
+        if (!input.files[0]) return;
+        
+        document.getElementById('loader').style.display = 'flex';
+        const file = input.files[0];
+        const zip = new JSZip();
+
+        try {
+            const content = await zip.loadAsync(file);
+            
+            // 1. Find Container to locate OPF
+            const containerXml = await content.file("META-INF/container.xml").async("text");
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(containerXml, "text/xml");
+            const rootFile = xmlDoc.getElementsByTagName("rootfile")[0];
+            const opfPath = rootFile.getAttribute("full-path");
+            const opfDir = opfPath.substring(0, opfPath.lastIndexOf('/')); // Directory of OPF
+
+            // 2. Parse OPF
+            const opfContent = await content.file(opfPath).async("text");
+            const opfDoc = parser.parseFromString(opfContent, "text/xml");
+            
+            // Get Metadata
+            const title = opfDoc.getElementsByTagName("dc:title")[0]?.textContent || "Imported Book";
+            const author = opfDoc.getElementsByTagName("dc:creator")[0]?.textContent || "Unknown";
+            document.getElementById('book-title').value = title;
+            document.getElementById('book-author').value = author;
+
+            // Get Manifest (Files) and Spine (Order)
+            const manifest = {};
+            Array.from(opfDoc.getElementsByTagName("item")).forEach(item => {
+                manifest[item.getAttribute("id")] = item.getAttribute("href");
+            });
+
+            const spineRefs = Array.from(opfDoc.getElementsByTagName("itemref")).map(ref => ref.getAttribute("idref"));
+
+            // 3. Extract Chapters
+            const newChapters = [];
+            
+            for (let i = 0; i < spineRefs.length; i++) {
+                const id = spineRefs[i];
+                const href = manifest[id];
+                if (!href) continue;
+
+                // Handle path relative to OPF location
+                const fullPath = opfDir ? `${opfDir}/${href}` : href;
+                
+                // Read File
+                const fileData = await content.file(fullPath)?.async("text");
+                if (!fileData) continue;
+
+                const chapDoc = parser.parseFromString(fileData, "application/xhtml+xml") || parser.parseFromString(fileData, "text/html");
+                
+                // EXTRACT BODY CONTENT
+                // We want to keep formatting (<b>, <i>, <p>) but strip full page HTML/HEAD tags
+                let bodyContent = chapDoc.body.innerHTML;
+
+                // 4. IMAGE FIXER (Advanced)
+                // If the HTML contains <img src="../Images/cover.jpg">, we need to find that file in Zip,
+                // convert to Base64, and inject it so the browser can see it.
+                const imgs = chapDoc.body.getElementsByTagName("img");
+                for (let img of imgs) {
+                    const imgSrc = img.getAttribute("src");
+                    // Resolve relative path logic (simplified)
+                    // This is "best effort" for a single file app
+                    let imgPath = resolvePath(fullPath, imgSrc);
+                    
+                    if (content.file(imgPath)) {
+                        const imgBlob = await content.file(imgPath).async("base64");
+                        // Guess mime type based on extension
+                        const ext = imgPath.split('.').pop();
+                        const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'image/png';
+                        // Replace src with data URI
+                        // We must do this on the string because 'imgs' is a live collection linked to the doc, 
+                        // but we are grabbing innerHTML string later. 
+                        // Actually, manipulating the DOM is better.
+                        img.setAttribute("src", `data:${mime};base64,${imgBlob}`);
+                    }
+                }
+                
+                // Get Chapter Title (try h1, then title tag, then fallback)
+                let chapTitle = chapDoc.querySelector("title")?.textContent;
+                const h1 = chapDoc.querySelector("h1");
+                if (h1 && h1.textContent.length < 50) chapTitle = h1.textContent;
+
+                newChapters.push({
+                    id: Date.now() + i,
+                    title: chapTitle || `Chapter ${i+1}`,
+                    content: chapDoc.body.innerHTML // Save the HTML with Base64 images
+                });
+            }
+
+            chapters = newChapters;
+            if(chapters.length > 0) selectChapter(chapters[0].id);
+
+        } catch (e) {
+            alert("Error reading EPUB: " + e.message);
+            console.error(e);
+        } finally {
+            document.getElementById('loader').style.display = 'none';
+        }
+    }
+
+    // Helper for Import Path Resolution
+    function resolvePath(currentFile, targetLink) {
+        // currentFile = OEBPS/Text/chap1.xhtml
+        // targetLink = ../Images/pic.jpg
+        const parts = currentFile.split('/');
+        parts.pop(); // Remove filename
+        
+        const targetParts = targetLink.split('/');
+        
+        for (let part of targetParts) {
+            if (part === '..') parts.pop();
+            else if (part !== '.') parts.push(part);
+        }
+        return parts.join('/');
+    }
+
+    // --- EXPORT LOGIC (Updated for Rich Text) ---
     async function generateEPUB() {
         const zip = new JSZip();
         const title = document.getElementById('book-title').value || "Untitled";
         const author = document.getElementById('book-author').value || "Unknown";
         const uuid = 'urn:uuid:' + crypto.randomUUID();
 
-        // 1. Mimetype
         zip.file("mimetype", "application/epub+zip", { compression: "STORE" });
-
-        // 2. Container
         zip.folder("META-INF").file("container.xml", `<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>`);
 
         const oebps = zip.folder("OEBPS");
 
-        // 3. CSS (The Fix for Spacing)
-        // Note: p { margin: 0; text-indent: 1.5em; } creates the "novel" look
+        // CSS: Ensures generated book looks clean regardless of input messiness
         const cssContent = `
             body { font-family: 'Times New Roman', serif; line-height: 1.5; padding: 0 1em; }
-            h1, h2, h3 { text-align: center; margin-bottom: 1.5em; font-weight: bold; }
+            img { max-width: 100%; height: auto; }
             p { margin: 0; text-indent: 1.5em; text-align: justify; }
-            /* First paragraph after heading often has no indent */
-            h1 + p { text-indent: 0; }
-            .title-page { text-align: center; margin-top: 30%; }
-            .title-page h1 { font-size: 2.5em; margin-bottom: 0.5em; }
-            .title-page h3 { font-size: 1.5em; font-weight: normal; color: #555; }
+            h1, h2 { text-align: center; text-indent: 0; }
+            /* Fix indentation on paragraphs following headers */
+            h1 + p, h2 + p, h3 + p { text-indent: 0; }
         `;
         oebps.file("style.css", cssContent);
 
         let manifestItems = `<item id="css" href="style.css" media-type="text/css" />\n`;
         let spineItems = ``;
-        let navMapItems = ``;
+        let navMap = ``;
 
-        // 4. Generate Title Page (New Feature)
-        const titlePageContent = `<?xml version="1.0" encoding="utf-8"?>
-<!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml">
-<head><title>Title Page</title><link rel="stylesheet" type="text/css" href="style.css"/></head>
-<body>
-    <div class="title-page">
-        <h1>${title}</h1>
-        <h3>${author}</h3>
-    </div>
-</body>
-</html>`;
-        oebps.file("title_page.xhtml", titlePageContent);
-        manifestItems += `<item id="titlepage" href="title_page.xhtml" media-type="application/xhtml+xml" />\n`;
-        spineItems += `<itemref idref="titlepage" />\n`;
-
-        // 5. Generate Chapters
+        // Loop Chapters
         chapters.forEach((chapter, index) => {
             const filename = `chapter_${index + 1}.xhtml`;
             const fileId = `chapter_${index + 1}`;
             
-            // Convert content: Wrap lines in <p>
-            const paragraphs = chapter.content.split('\n')
-                .filter(line => line.trim() !== '') // Remove empty lines to avoid huge gaps
-                .map(line => `<p>${line.trim()}</p>`)
-                .join('\n');
-
+            // Clean up content slightly (ensure it's valid XHTML inside body)
+            // Note: In a production app, use a DOMParser to serialize strict XHTML.
+            // Here we wrap user content in a div to catch loose text.
+            
             const xhtml = `<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml">
@@ -462,7 +443,9 @@
 </head>
 <body>
     <h1>${chapter.title}</h1>
-    ${paragraphs}
+    <div class="chapter-content">
+        ${chapter.content}
+    </div>
 </body>
 </html>`;
 
@@ -471,14 +454,10 @@
             manifestItems += `<item id="${fileId}" href="${filename}" media-type="application/xhtml+xml" />\n`;
             spineItems += `<itemref idref="${fileId}" />\n`;
             
-            navMapItems += `
-            <navPoint id="navPoint-${index + 1}" playOrder="${index + 1}">
-                <navLabel><text>${chapter.title}</text></navLabel>
-                <content src="${filename}" />
-            </navPoint>`;
+            navMap += `<navPoint id="navPoint-${index + 1}" playOrder="${index + 1}"><navLabel><text>${chapter.title}</text></navLabel><content src="${filename}" /></navPoint>`;
         });
 
-        // 6. Content.opf
+        // Content.opf
         const opfContent = `<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" unique-identifier="BookId" version="3.0">
     <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
@@ -486,44 +465,27 @@
         <dc:creator>${author}</dc:creator>
         <dc:identifier id="BookId">${uuid}</dc:identifier>
         <dc:language>en</dc:language>
-        <meta property="dcterms:modified">${new Date().toISOString().split('.')[0] + 'Z'}</meta>
     </metadata>
     <manifest>
         <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
         ${manifestItems}
     </manifest>
-    <spine toc="ncx">
-        ${spineItems}
-    </spine>
+    <spine toc="ncx">${spineItems}</spine>
 </package>`;
 
         oebps.file("content.opf", opfContent);
-
-        // 7. TOC.ncx
-        const ncxContent = `<?xml version="1.0" encoding="UTF-8"?>
-<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
-    <head>
-        <meta name="dtb:uid" content="${uuid}"/>
-        <meta name="dtb:depth" content="1"/>
-        <meta name="dtb:totalPageCount" content="0"/>
-        <meta name="dtb:maxPageNumber" content="0"/>
-    </head>
-    <docTitle><text>${title}</text></docTitle>
-    <navMap>
-        ${navMapItems}
-    </navMap>
-</ncx>`;
-
+        
+        // NCX
+        const ncxContent = `<?xml version="1.0" encoding="UTF-8"?><ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1"><head><meta name="dtb:uid" content="${uuid}"/></head><docTitle><text>${title}</text></docTitle><navMap>${navMap}</navMap></ncx>`;
         oebps.file("toc.ncx", ncxContent);
 
-        // 8. Download
+        // Download
         zip.generateAsync({ type: "blob" }).then(function(content) {
             const url = window.URL.createObjectURL(content);
             const a = document.createElement("a");
             a.href = url;
-            a.download = `${title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.epub`;
+            a.download = `${title.replace(/[^a-z0-9]/gi, '_')}.epub`;
             a.click();
-            window.URL.revokeObjectURL(url);
         });
     }
 </script>
