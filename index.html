@@ -3,386 +3,357 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EPUB Studio v7 - Layout Fix</title>
+    <title>EPUB Studio v8 - Lossless Roundtrip</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
-        /* --- RESET & BASICS --- */
+        /* --- RESET --- */
         * { box-sizing: border-box; }
+        :root { --bg: #f3f4f6; --surface: #ffffff; --border: #e5e7eb; --accent: #2563eb; }
+        body { margin: 0; background: var(--bg); font-family: system-ui, sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+        /* --- LAYOUT --- */
+        header { height: 50px; background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 1rem; justify-content: space-between; flex-shrink: 0; }
+        .title { font-weight: 600; font-size: 14px; color: #374151; }
+        .actions { display: flex; gap: 8px; }
         
-        :root {
-            --primary: #0f172a;
-            --accent: #2563eb;
-            --bg: #f1f5f9;
-            --border: #cbd5e1;
-            --surface: #ffffff;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            margin: 0;
-            padding: 0;
-            background: var(--bg);
-            height: 100vh; /* Strict height */
-            width: 100vw;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden; /* STOP BODY SCROLLING */
-        }
-
-        /* --- HEADER (Fixed Top) --- */
-        header {
-            height: 60px;
-            background: var(--surface);
-            border-bottom: 1px solid var(--border);
-            display: flex;
-            align-items: center;
-            padding: 0 1rem;
-            justify-content: space-between;
-            flex-shrink: 0; /* Never shrink */
-            z-index: 20;
-        }
-
-        .inputs { display: flex; gap: 10px; flex: 1; max-width: 500px; }
-        input[type="text"] {
-            padding: 8px; border: 1px solid var(--border); border-radius: 4px; width: 100%;
-        }
-
-        .actions { display: flex; gap: 10px; }
-        button, .file-btn {
-            padding: 8px 16px; border-radius: 4px; border: none; cursor: pointer;
-            font-size: 14px; background: #e2e8f0; color: #334155;
-        }
-        button.accent { background: var(--accent); color: white; }
+        button, .btn { padding: 6px 12px; font-size: 13px; border-radius: 4px; border: 1px solid #d1d5db; background: white; cursor: pointer; color: #374151; }
+        button:hover, .btn:hover { background: #f9fafb; border-color: #9ca3af; }
+        .btn-primary { background: var(--accent); color: white; border: none; }
+        .btn-primary:hover { background: #1d4ed8; }
         input[type="file"] { display: none; }
 
-        /* --- MAIN LAYOUT (The Fix) --- */
-        main {
-            display: flex;
-            flex: 1; /* Fill remaining space */
-            height: calc(100vh - 60px); /* Explicit height calculation */
-            overflow: hidden; /* Contain children */
-        }
+        main { display: flex; flex: 1; height: calc(100vh - 50px); }
 
-        /* --- SIDEBAR --- */
-        aside {
-            width: 260px;
-            background: var(--surface);
-            border-right: 1px solid var(--border);
-            display: flex;
-            flex-direction: column;
-            flex-shrink: 0;
-            height: 100%; /* Fill Main */
-        }
+        /* Sidebar */
+        aside { width: 250px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; }
+        .file-list { flex: 1; overflow-y: auto; list-style: none; padding: 0; margin: 0; }
+        .file-item { padding: 8px 12px; font-size: 13px; border-bottom: 1px solid #f3f4f6; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .file-item:hover { background: #f3f4f6; }
+        .file-item.active { background: #eff6ff; color: var(--accent); border-left: 3px solid var(--accent); }
+        .sidebar-header { padding: 10px; font-size: 11px; font-weight: bold; text-transform: uppercase; color: #6b7280; background: #f9fafb; border-bottom: 1px solid var(--border); }
 
-        .chapter-list {
-            flex: 1; /* Fill Aside */
-            overflow-y: auto; /* SCROLL HERE */
-            list-style: none; padding: 0; margin: 0;
-        }
+        /* Editor */
+        .editor-container { flex: 1; display: flex; flex-direction: column; background: #e5e7eb; }
+        .toolbar { height: 40px; background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 10px; gap: 5px; flex-shrink: 0; }
+        
+        .canvas { flex: 1; overflow: auto; padding: 40px; display: flex; justify-content: center; }
+        .page { width: 100%; max-width: 800px; min-height: 100%; background: white; padding: 50px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); outline: none; }
+        
+        /* The Content Itself */
+        #editor { font-family: 'Times New Roman', serif; font-size: 18px; line-height: 1.6; }
+        #editor img { max-width: 100%; }
 
-        .chapter-item {
-            padding: 12px 16px; border-bottom: 1px solid #f1f5f9; cursor: pointer;
-            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px;
-        }
-        .chapter-item:hover { background: #f8fafc; }
-        .chapter-item.active { background: #eff6ff; color: var(--accent); border-left: 4px solid var(--accent); }
-
-        .sidebar-foot { padding: 10px; border-top: 1px solid var(--border); background: var(--surface); }
-        .sidebar-foot button { width: 100%; }
-
-        /* --- EDITOR AREA --- */
-        .editor-container {
-            flex: 1;
-            background: #cbd5e1;
-            display: flex;
-            justify-content: center;
-            overflow-y: auto; /* SCROLL HERE */
-            padding: 40px;
-            height: 100%;
-        }
-
-        .page {
-            background: white;
-            width: 100%; max-width: 800px;
-            min-height: 100%; /* At least fill screen */
-            height: fit-content; /* Allow growth */
-            padding: 50px 60px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-            display: flex; flex-direction: column;
-        }
-
-        #chap-title {
-            font-size: 28px; font-weight: 800; border: none; margin-bottom: 20px;
-            font-family: serif; outline: none; width: 100%;
-        }
-
-        .toolbar {
-            position: sticky; top: 0; background: white; padding: 10px 0; margin-bottom: 20px;
-            border-bottom: 2px solid #f1f5f9; display: flex; gap: 8px; z-index: 10;
-        }
-        .toolbar button { padding: 4px 10px; border: 1px solid #cbd5e1; background: white; }
-        .toolbar button:hover { border-color: var(--accent); color: var(--accent); }
-
-        #editor {
-            flex: 1; outline: none; font-family: 'Georgia', serif; font-size: 18px; line-height: 1.6;
-        }
-        #editor p { margin-bottom: 1em; }
-        #editor img { max-width: 100%; height: auto; display: block; margin: 1em auto; }
-
-        /* --- LOADER --- */
-        #loader {
-            position: fixed; inset: 0; background: rgba(255,255,255,0.95); z-index: 999;
-            display: none; flex-direction: column; justify-content: center; align-items: center;
-        }
+        /* Loader */
+        #loader { position: fixed; inset: 0; background: rgba(255,255,255,0.95); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 100; }
         #loader.active { display: flex; }
-        .spinner { width: 40px; height: 40px; border: 4px solid #cbd5e1; border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite; }
+        .spinner { width: 30px; height: 30px; border: 3px solid #e5e7eb; border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 10px; }
         @keyframes spin { to { transform: rotate(360deg); } }
-
-        /* Custom Scrollbars */
-        ::-webkit-scrollbar { width: 8px; }
-        ::-webkit-scrollbar-track { background: #f1f5f9; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
     </style>
 </head>
 <body>
 
 <div id="loader">
     <div class="spinner"></div>
-    <div id="status" style="margin-top:15px; font-weight:500;">Processing...</div>
-    <button onclick="document.getElementById('loader').classList.remove('active')" style="margin-top:20px;">Force Close</button>
+    <div id="status">Ready</div>
 </div>
 
 <header>
-    <div class="inputs">
-        <input type="text" id="book-title" placeholder="Book Title">
-        <input type="text" id="book-author" placeholder="Author">
-    </div>
+    <div class="title" id="doc-title">No Document Loaded</div>
     <div class="actions">
-        <label class="file-btn">
-            📂 Import
-            <input type="file" accept=".epub" onchange="importEPUB(this)">
+        <label class="btn">
+            Open EPUB
+            <input type="file" accept=".epub" onchange="loadEPUB(this)">
         </label>
-        <button class="accent" onclick="exportEPUB()">⬇ Export</button>
+        <button class="btn-primary" onclick="saveEPUB()">Save & Export</button>
     </div>
 </header>
 
 <main>
     <aside>
-        <ul class="chapter-list" id="list"></ul>
-        <div class="sidebar-foot">
-            <button onclick="addChapter()">+ Add Chapter</button>
-        </div>
+        <div class="sidebar-header">Chapters (Spine)</div>
+        <ul class="file-list" id="spine-list"></ul>
     </aside>
 
     <div class="editor-container">
-        <div class="page">
-            <input type="text" id="chap-title" placeholder="Chapter Title" oninput="saveCurrent()">
-            <div class="toolbar">
-                <button onclick="fmt('bold')"><b>B</b></button>
-                <button onclick="fmt('italic')"><i>I</i></button>
-                <button onclick="fmt('formatBlock','h2')">H2</button>
-                <button onclick="fmt('formatBlock','p')">P</button>
-                <button onclick="fmt('removeFormat')">Clean</button>
-            </div>
-            <div id="editor" contenteditable="true" oninput="saveCurrent()">
-                <p>Start writing here...</p>
+        <div class="toolbar">
+            <button onclick="fmt('bold')"><b>B</b></button>
+            <button onclick="fmt('italic')"><i>I</i></button>
+            <button onclick="fmt('formatBlock','h2')">Heading</button>
+            <button onclick="fmt('formatBlock','p')">Para</button>
+        </div>
+        <div class="canvas">
+            <div id="editor" class="page" contenteditable="true" oninput="markDirty()">
+                <p style="color:#6b7280; text-align:center; margin-top:50px;">Import an EPUB to begin editing.</p>
             </div>
         </div>
     </div>
 </main>
 
 <script>
-    // --- State & Helpers ---
-    let chapters = [];
-    let currentId = null;
+    // --- GLOBAL STORE ---
+    // This is the "Brain". We store the raw binary of files we don't touch,
+    // and the text strings of files we do touch.
+    let epubFiles = {};  // Map: filename -> { data: Blob/Text, type: "binary"|"text" }
+    let spine = [];      // Array of filenames in reading order
+    let currentFile = null;
+    let isDirty = false;
+
+    // --- UTILS ---
     const get = id => document.getElementById(id);
     const fmt = (c, v) => document.execCommand(c, false, v);
+    const setStatus = msg => { get('status').innerText = msg; get('loader').classList.add('active'); };
+    const hideStatus = () => get('loader').classList.remove('active');
 
-    function showLoader(msg) {
-        get('status').innerText = msg;
-        get('loader').classList.add('active');
-    }
-    function hideLoader() { get('loader').classList.remove('active'); }
-
-    // --- Core Logic ---
-    function renderList() {
-        const list = get('list');
-        list.innerHTML = '';
-        chapters.forEach(c => {
-            const li = document.createElement('li');
-            li.className = `chapter-item ${c.id === currentId ? 'active' : ''}`;
-            li.textContent = c.title || 'Untitled Chapter';
-            li.onclick = () => loadChapter(c.id);
-            list.appendChild(li);
-        });
-    }
-
-    function loadChapter(id) {
-        currentId = id;
-        const c = chapters.find(x => x.id === id);
-        if(!c) return;
-        get('chap-title').value = c.title;
-        get('editor').innerHTML = c.content;
-        renderList();
-    }
-
-    function saveCurrent() {
-        const c = chapters.find(x => x.id === currentId);
-        if(c) {
-            c.title = get('chap-title').value;
-            c.content = get('editor').innerHTML;
-            const active = document.querySelector('.chapter-item.active');
-            if(active) active.textContent = c.title;
-        }
-    }
-
-    function addChapter() {
-        const id = Date.now();
-        chapters.push({ id, title: "New Chapter", content: "<p>New content...</p>" });
-        loadChapter(id);
-    }
-    
-    // Init
-    addChapter();
-
-    // --- ROBUST IMPORT (Same Logic, Better Error Handling) ---
-    async function importEPUB(input) {
+    // --- IMPORT ENGINE ---
+    async function loadEPUB(input) {
         if(!input.files[0]) return;
-        showLoader("Reading...");
+        setStatus("Unpacking...");
         
         try {
             const zip = new JSZip();
             const content = await zip.loadAsync(input.files[0]);
             
-            // Find OPF (Brute Force)
-            let opfPath = Object.keys(content.files).find(f => f.endsWith('.opf'));
-            if(!opfPath) throw new Error("No .opf file found in EPUB.");
+            // 1. Reset Global Store
+            epubFiles = {};
+            spine = [];
+            currentFile = null;
 
-            // Parse OPF
-            const opfTxt = await content.file(opfPath).async("text");
-            const parser = new DOMParser();
-            const xml = parser.parseFromString(opfTxt, "text/xml");
-            
-            // Meta
-            get('book-title').value = xml.getElementsByTagName("dc:title")[0]?.textContent || "";
-            get('book-author').value = xml.getElementsByTagName("dc:creator")[0]?.textContent || "";
-
-            // Manifest map
-            const manifest = {};
-            Array.from(xml.getElementsByTagName("item")).forEach(i => manifest[i.getAttribute("id")] = i.getAttribute("href"));
-
-            // Spine loop
-            const spine = Array.from(xml.getElementsByTagName("itemref"));
-            const newChapters = [];
-            const opfDir = opfPath.includes('/') ? opfPath.substring(0, opfPath.lastIndexOf('/')) : '';
-
-            for(let i=0; i<spine.length; i++) {
-                const id = spine[i].getAttribute("idref");
-                let href = manifest[id];
-                if(!href) continue;
-                href = decodeURI(href);
+            // 2. Load EVERYTHING into Memory (Preservation Phase)
+            // We iterate every single file in the zip.
+            for (let filename in content.files) {
+                if (content.files[filename].dir) continue;
                 
-                // Path Logic
-                let fullPath = opfDir ? `${opfDir}/${href}` : href;
-                let fileObj = content.file(fullPath) || content.file(Object.keys(content.files).find(k => k.toLowerCase() === fullPath.toLowerCase()));
+                // Decide if text or binary
+                const lower = filename.toLowerCase();
+                const isText = lower.endsWith('.xml') || lower.endsWith('.html') || lower.endsWith('.xhtml') || lower.endsWith('.opf') || lower.endsWith('.ncx') || lower.endsWith('.css') || lower.endsWith('.svg');
                 
-                if(!fileObj) continue;
-
-                // Content
-                const html = await fileObj.async("text");
-                const doc = parser.parseFromString(html, "text/html");
-
-                // Image Injection (Base64)
-                const imgs = doc.querySelectorAll('img, image');
-                for(let img of imgs) {
-                    let src = img.getAttribute('src') || img.getAttribute('xlink:href');
-                    if(src) {
-                        // Relative path math
-                        let parts = fullPath.split('/'); parts.pop(); // current dir
-                        src.split('/').forEach(p => {
-                            if(p === '..') parts.pop();
-                            else if(p !== '.') parts.push(p);
-                        });
-                        let imgPath = parts.join('/');
-                        
-                        let imgFile = content.file(imgPath) || content.file(Object.keys(content.files).find(k => k.toLowerCase().endsWith(src.split('/').pop().toLowerCase())));
-                        
-                        if(imgFile) {
-                            const b64 = await imgFile.async("base64");
-                            const mime = src.toLowerCase().endsWith('png') ? 'image/png' : 'image/jpeg';
-                            img.setAttribute('src', `data:${mime};base64,${b64}`);
-                        }
-                    }
+                if (isText) {
+                    const textData = await content.file(filename).async("text");
+                    epubFiles[filename] = { data: textData, type: "text" };
+                } else {
+                    const blobData = await content.file(filename).async("blob");
+                    epubFiles[filename] = { data: blobData, type: "binary" };
                 }
-
-                // Clean styles
-                doc.querySelectorAll('*').forEach(el => el.removeAttribute('style'));
-
-                newChapters.push({
-                    id: Date.now() + i,
-                    title: doc.querySelector('title, h1, h2')?.textContent || `Chapter ${i+1}`,
-                    content: doc.body.innerHTML
-                });
             }
 
-            if(newChapters.length > 0) {
-                chapters = newChapters;
-                loadChapter(chapters[0].id);
+            // 3. Find the OPF to determine Spine (Reading Order)
+            let opfPath = null;
+            
+            // Try standard container.xml method
+            if (epubFiles["META-INF/container.xml"]) {
+                const xml = new DOMParser().parseFromString(epubFiles["META-INF/container.xml"].data, "text/xml");
+                opfPath = xml.getElementsByTagName("rootfile")[0]?.getAttribute("full-path");
             }
-            hideLoader();
+            
+            // Fallback: search for any .opf
+            if (!opfPath) {
+                opfPath = Object.keys(epubFiles).find(f => f.endsWith('.opf'));
+            }
 
-        } catch(e) {
+            if (!opfPath) throw new Error("Invalid EPUB: No OPF found.");
+
+            // 4. Parse OPF to build Spine
+            const opfDir = opfPath.includes('/') ? opfPath.substring(0, opfPath.lastIndexOf('/')) : '';
+            const opfDoc = new DOMParser().parseFromString(epubFiles[opfPath].data, "text/xml");
+            
+            // Get Manifest (ID -> Href)
+            const manifest = {};
+            Array.from(opfDoc.getElementsByTagName("item")).forEach(item => {
+                manifest[item.getAttribute("id")] = item.getAttribute("href");
+            });
+
+            // Get Spine (List of IDs)
+            Array.from(opfDoc.getElementsByTagName("itemref")).forEach(ref => {
+                const id = ref.getAttribute("idref");
+                let href = manifest[id];
+                if (href) {
+                    // Resolve relative path
+                    href = decodeURI(href);
+                    const fullPath = opfDir ? `${opfDir}/${href}` : href;
+                    spine.push(fullPath);
+                }
+            });
+
+            get('doc-title').innerText = opfDoc.getElementsByTagName("dc:title")[0]?.textContent || "Untitled Book";
+
+            // 5. Render Sidebar
+            renderSidebar();
+            
+            // 6. Load First Chapter
+            if(spine.length > 0) openChapter(spine[0]);
+
+            hideStatus();
+
+        } catch (e) {
             console.error(e);
             alert("Error: " + e.message);
-            hideLoader();
+            hideStatus();
         }
     }
 
-    // --- EXPORT ---
-    async function exportEPUB() {
-        showLoader("Exporting...");
-        setTimeout(async () => {
-            try {
-                const zip = new JSZip();
-                const title = get('book-title').value || "Untitled";
-                const uuid = 'urn:uuid:' + crypto.randomUUID();
+    // --- UI LOGIC ---
+    function renderSidebar() {
+        const list = get('spine-list');
+        list.innerHTML = '';
+        spine.forEach((path, index) => {
+            const li = document.createElement('li');
+            li.className = 'file-item';
+            li.textContent = path.split('/').pop(); // Show just filename
+            li.onclick = () => openChapter(path);
+            if (path === currentFile) li.classList.add('active');
+            list.appendChild(li);
+        });
+    }
 
-                zip.file("mimetype", "application/epub+zip", {compression:"STORE"});
-                zip.folder("META-INF").file("container.xml", `<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>`);
+    function openChapter(path) {
+        // Save previous if dirty
+        if (currentFile && isDirty) saveCurrentFileInMemory();
+
+        currentFile = path;
+        isDirty = false;
+        
+        // Find file in memory
+        // We need fuzzy matching because zips are case sensitive but some OBFs aren't
+        let fileKey = Object.keys(epubFiles).find(k => k.toLowerCase() === path.toLowerCase());
+        
+        if (!fileKey) {
+            get('editor').innerHTML = "<p>Error: File not found in zip.</p>";
+            return;
+        }
+
+        // Render HTML
+        const rawHTML = epubFiles[fileKey].data;
+        
+        // We need to inject the CSS and Images so they show up in the editor
+        // Strategy: Base64 everything? No, that breaks on export.
+        // Strategy: Blob URLs.
+        const previewHTML = processHTMLForPreview(rawHTML, path);
+        
+        get('editor').innerHTML = previewHTML;
+        renderSidebar(); // Update active state
+    }
+
+    function markDirty() {
+        isDirty = true;
+    }
+
+    function saveCurrentFileInMemory() {
+        if (!currentFile) return;
+        
+        // We need to take the editor content and wrap it back into the original HTML structure
+        // But wait! The editor only shows the BODY. We stored the FULL HTML in `epubFiles`.
+        
+        let fileKey = Object.keys(epubFiles).find(k => k.toLowerCase() === currentFile.toLowerCase());
+        const originalDoc = new DOMParser().parseFromString(epubFiles[fileKey].data, "text/html");
+        
+        // Update Body
+        // Note: We need to reverse the "Preview Processing" (stripping blob URLs)
+        // But simplified: We just accept that the editor content is the new body content.
+        // Images might be tricky. For now, we assume user didn't change image src.
+        
+        originalDoc.body.innerHTML = get('editor').innerHTML;
+        
+        // Serialize back to string
+        epubFiles[fileKey].data = new XMLSerializer().serializeToString(originalDoc);
+        isDirty = false;
+    }
+
+    // --- PREVIEW RENDERER (Crucial for Images) ---
+    // Turns relative paths (../images/cover.jpg) into Blob URLs (blob:http://...) so the browser renders them
+    function processHTMLForPreview(html, currentPath) {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, "text/html");
+        
+        // Fix Images
+        doc.querySelectorAll('img, image, link[rel="stylesheet"]').forEach(el => {
+            const attr = el.tagName === 'LINK' ? 'href' : (el.getAttribute('src') ? 'src' : 'xlink:href');
+            const val = el.getAttribute(attr);
+            if (!val) return;
+
+            // Resolve Path
+            const absPath = resolvePath(currentPath, val);
+            
+            // Find Blob
+            const fileKey = Object.keys(epubFiles).find(k => k.toLowerCase() === absPath.toLowerCase());
+            if (fileKey && epubFiles[fileKey]) {
+                const blob = epubFiles[fileKey].data;
+                // If it's text (css), make a blob
+                const blobObj = (epubFiles[fileKey].type === 'text') 
+                    ? new Blob([blob], {type: 'text/css'}) 
+                    : blob;
                 
-                const oebps = zip.folder("OEBPS");
-                oebps.file("style.css", `body{font-family:serif;padding:0 5%} p{text-indent:1.5em;margin:0} h1,h2{text-align:center} img{max-width:100%;height:auto;display:block;margin:1em auto}`);
-
-                let manifest = `<item id="css" href="style.css" media-type="text/css"/>`;
-                let spine = ``;
-                let nav = ``;
-
-                chapters.forEach((c, i) => {
-                    const fn = `c${i}.xhtml`;
-                    const xhtml = `<?xml version="1.0" encoding="utf-8"?><!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml"><head><title>${c.title}</title><link rel="stylesheet" href="style.css"/></head><body><h2>${c.title}</h2>${c.content}</body></html>`;
-                    oebps.file(fn, xhtml);
-                    manifest += `<item id="c${i}" href="${fn}" media-type="application/xhtml+xml"/>`;
-                    spine += `<itemref idref="c${i}"/>`;
-                    nav += `<navPoint id="n${i}" playOrder="${i}"><navLabel><text>${c.title}</text></navLabel><content src="${fn}"/></navPoint>`;
-                });
-
-                const opf = `<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" unique-identifier="uid" version="3.0"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>${title}</dc:title><dc:creator>${get('book-author').value}</dc:creator><dc:identifier id="uid">${uuid}</dc:identifier><dc:language>en</dc:language></metadata><manifest><item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>${manifest}</manifest><spine toc="ncx">${spine}</spine></package>`;
-                oebps.file("content.opf", opf);
-                oebps.file("toc.ncx", `<?xml version="1.0"?><ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1"><head><meta name="dtb:uid" content="${uuid}"/></head><docTitle><text>${title}</text></docTitle><navMap>${nav}</navMap></ncx>`);
-
-                const b = await zip.generateAsync({type:"blob"});
-                const a = document.createElement('a');
-                a.href = URL.createObjectURL(b);
-                a.download = title.replace(/[^a-z0-9]/gi, '_') + ".epub";
-                a.click();
-                hideLoader();
-            } catch(e) {
-                alert("Export Failed: " + e.message);
-                hideLoader();
+                const url = URL.createObjectURL(blobObj);
+                el.setAttribute(attr, url);
+                el.setAttribute('data-original-src', val); // Remember original!
             }
+        });
+
+        return doc.body.innerHTML;
+    }
+
+    function resolvePath(base, relative) {
+        const stack = base.split('/');
+        stack.pop();
+        const parts = relative.split('/');
+        for (let p of parts) {
+            if (p === '.') continue;
+            if (p === '..') stack.pop();
+            else stack.push(p);
+        }
+        return stack.join('/');
+    }
+
+    // --- EXPORT ENGINE ---
+    async function saveEPUB() {
+        if (isDirty) saveCurrentFileInMemory();
+        setStatus("Repacking...");
+
+        setTimeout(async () => {
+            const zip = new JSZip();
+
+            // Add all files from memory
+            for (let filename in epubFiles) {
+                let content = epubFiles[filename].data;
+                
+                // If it's an HTML file, we need to ensure we strip those Blob URLs back to original paths!
+                if (epubFiles[filename].type === 'text' && filename.match(/\.(html|xhtml)$/i)) {
+                    content = restoreOriginalPaths(content);
+                }
+
+                zip.file(filename, content);
+            }
+
+            const blob = await zip.generateAsync({type: "blob"});
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = "edited_book.epub";
+            a.click();
+            hideStatus();
         }, 100);
     }
+
+    function restoreOriginalPaths(htmlString) {
+        // This is a rough cleanup to remove the blob: URLs we injected for preview
+        // In a production app, we would use DOMParser, check 'data-original-src', and restore it.
+        // For this demo, we rely on the fact that we saved the structure in `saveCurrentFileInMemory`
+        // using `originalDoc`.
+        
+        // However, if the user *edited* the DOM, the `data-original-src` attributes are still there.
+        // We just need to swap them back.
+        
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(htmlString, "text/html");
+        
+        doc.querySelectorAll('[data-original-src]').forEach(el => {
+            const original = el.getAttribute('data-original-src');
+            const attr = el.tagName === 'LINK' ? 'href' : (el.getAttribute('src') ? 'src' : 'xlink:href');
+            el.setAttribute(attr, original);
+            el.removeAttribute('data-original-src');
+        });
+        
+        return new XMLSerializer().serializeToString(doc);
+    }
+
 </script>
 </body>
 </html>
