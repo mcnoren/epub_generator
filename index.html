@@ -85,7 +85,12 @@
         #chapter-title { font-size: 24px; font-weight: 700; border: none; outline: none; width: 100%; margin-bottom: 15px; font-family: serif; border-bottom: 1px solid transparent; }
         
         #editor { flex: 1; outline: none; font-family: 'Georgia', serif; font-size: 18px; line-height: 1.5; }
-        #editor p { margin: 0; padding: 0; min-height: 1em; }
+        #editor p { 
+            margin: 0; 
+            padding: 0; 
+            min-height: 1em; 
+            text-indent: 1.5em; /* <--- Adds indentation to the start of every paragraph */
+        }
         #editor:empty:before { content: attr(placeholder); color: #94a3b8; pointer-events: none; display: block; }
         
         /* IMAGE STYLES - SIDE BY SIDE SUPPORT */
@@ -674,7 +679,7 @@
                     assetManifest += `<item id="${id}" href="images/${name}" media-type="${mime}"${properties}/>\n`;
                 }
 
-                const css = book.css || `body{padding:5%; line-height:1.5;} p{margin:0; padding:0;} img{max-width:100%; height:auto;}`;
+                const css = book.css || `body{padding:5%; line-height:1.5;} p{margin:0; padding:0; text-indent: 1.5em;} img{max-width:100%; height:auto;}`;
                 oebps.file("style.css", css);
 
                 let manifest = `<item id="css" href="style.css" media-type="text/css"/>\n` + assetManifest;
