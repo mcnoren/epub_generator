@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EPUB Studio v21 - Smart Import</title>
+    <title>EPUB Studio v22 - Exact TOC Import</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         /* --- RESET & LAYOUT --- */
@@ -212,7 +212,6 @@
         if(window.innerWidth <= 768) toggleSidebar();
     }
 
-    // --- GAP REMOVER ---
     function removeGaps() {
         const editor = document.getElementById('editor');
         const paragraphs = editor.querySelectorAll('p, div, h1, h2, h3, h4, h5, h6');
@@ -245,7 +244,6 @@
     function imgAlign(a) { if(selectedImg) { selectedImg.style.display = 'block'; selectedImg.style.margin = a==='left'?'10px auto 10px 0':(a==='right'?'10px 0 10px auto':'10px auto'); saveCurrent(); } }
     function imgDelete() { if(selectedImg) { selectedImg.remove(); document.getElementById('img-toolbar').classList.remove('visible'); selectedImg = null; saveCurrent(); } }
 
-    // --- UI ---
     function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); document.getElementById('sidebar-overlay').classList.toggle('active'); }
     function startLoader(msg) { document.getElementById('loader-overlay').classList.add('active'); document.getElementById('loader-msg').innerText = msg; document.querySelector('.spinner').style.display='block'; document.getElementById('loader-close').style.display='none'; }
     function failLoader(err) { document.getElementById('loader-msg').innerText = "Error: "+err; document.querySelector('.spinner').style.display='none'; document.getElementById('loader-close').style.display='block'; }
@@ -274,7 +272,6 @@
         }
     }
 
-    // --- IMPORT ---
     function resolvePath(base, relative) {
         const stack = base.split('/'); stack.pop();
         const parts = relative.split('/');
@@ -328,6 +325,7 @@
                 if(item.getAttribute("properties") === "cover-image") coverId = id;
             });
 
+            // 1. ASSET LOADER
             for (let id in manifest) {
                 const href = manifest[id];
                 const fullPath = resolvePath(opfPath, href);
@@ -342,6 +340,35 @@
                 }
             }
 
+            // 2. TOC MAP PARSER (The New Fix)
+            let tocMap = {};
+            const spineTag = xml.getElementsByTagName("spine")[0];
+            const tocId = spineTag.getAttribute("toc"); // Classic EPUB2 TOC ID
+            
+            if (tocId && manifest[tocId]) {
+                const tocHref = manifest[tocId];
+                const fullTocPath = resolvePath(opfPath, tocHref);
+                const tocFile = findFile(content, fullTocPath);
+                
+                if (tocFile) {
+                    const tocTxt = await tocFile.async("text");
+                    const tocXml = parser.parseFromString(tocTxt, "text/xml");
+                    
+                    // Parse navPoints
+                    Array.from(tocXml.getElementsByTagName("navPoint")).forEach(np => {
+                        const label = np.getElementsByTagName("text")[0]?.textContent;
+                        let src = np.getElementsByTagName("content")[0]?.getAttribute("src");
+                        if (src && label) {
+                            src = decodeURI(src);
+                            // Remove anchor (#) for mapping if present
+                            if(src.includes('#')) src = src.split('#')[0];
+                            tocMap[src] = label.trim();
+                        }
+                    });
+                }
+            }
+
+            // 3. SPINE & CHAPTER LOADER
             const spine = Array.from(xml.getElementsByTagName("itemref"));
             for (let i = 0; i < spine.length; i++) {
                 const id = spine[i].getAttribute("idref");
@@ -356,45 +383,38 @@
                     const doc = parser.parseFromString(html, "text/html");
                     processDocImages(doc);
 
-                    // SMART TITLE EXTRACTION
+                    // TITLE LOGIC: TOC Map > H1 > H2 > Meta
                     let chTitle = "";
-                    const h1 = doc.querySelector('h1');
-                    const h2 = doc.querySelector('h2');
-                    const titleTag = doc.querySelector('title');
+                    
+                    // Try TOC Map using the href (filename)
+                    // Href in manifest might contain folder structure, clean it to match TOC potentially
+                    // But usually, TOC src matches Manifest href structure relative to OPF.
+                    // Let's try exact match on href first.
+                    if (tocMap[href]) chTitle = tocMap[href];
+                    // Sometimes TOC uses just filename
+                    else {
+                        const simpleName = href.split('/').pop();
+                        if (tocMap[simpleName]) chTitle = tocMap[simpleName];
+                    }
 
-                    if(h1 && h1.innerText.trim()) chTitle = h1.innerText.trim();
-                    else if(h2 && h2.innerText.trim()) chTitle = h2.innerText.trim();
-                    else if(titleTag && titleTag.innerText.trim()) {
-                        chTitle = titleTag.innerText.trim();
-                        // Strip book name from chapter title
-                        if(book.title && chTitle.includes(book.title)) {
-                            chTitle = chTitle.replace(book.title, "").replace(/^[\s\-\:|]+|[\s\-\:|]+$/g, "");
+                    // Fallback to text scraping if TOC failed
+                    if (!chTitle) {
+                        const h1 = doc.querySelector('h1');
+                        if (h1 && h1.innerText.trim()) chTitle = h1.innerText.trim();
+                        else {
+                            const h2 = doc.querySelector('h2');
+                            if (h2 && h2.innerText.trim()) chTitle = h2.innerText.trim();
                         }
                     }
-                    if(!chTitle) chTitle = `Chapter ${i+1}`;
+
+                    // Final Fallback
+                    if (!chTitle) chTitle = `Chapter ${i+1}`;
 
                     book.chapters.push({
                         id: Date.now() + i,
                         title: chTitle,
                         content: doc.body.innerHTML
                     });
-                }
-            }
-
-            // Fallback scan
-            if(book.chapters.length === 0) {
-                for(let filename in content.files) {
-                    if(filename.match(/\.(html|xhtml)$/i) && !filename.includes('__MACOSX')) {
-                        const fileObj = content.file(filename);
-                        const html = await fileObj.async("text");
-                        const doc = parser.parseFromString(html, "text/html");
-                        processDocImages(doc);
-                        book.chapters.push({
-                            id: Date.now() + Math.random(),
-                            title: filename.split('/').pop(),
-                            content: doc.body.innerHTML
-                        });
-                    }
                 }
             }
 
@@ -509,8 +529,6 @@
         if(c) {
             c.title = document.getElementById('chapter-title').value;
             c.content = document.getElementById('editor').innerHTML;
-            
-            // Only update active list item text to avoid re-rendering entire list
             const activeSpan = document.querySelector('.chapter-item.active span');
             if(activeSpan) activeSpan.innerText = c.title;
         }
