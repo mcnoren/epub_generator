@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EPUB Studio v16 - Single Spacing</title>
+    <title>EPUB Studio v17 - robust Image Tools</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         /* --- RESET & LAYOUT --- */
@@ -30,6 +30,21 @@
         #main-toolbar { height: 45px; background: #f1f5f9; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; padding: 0 10px; gap: 5px; overflow-x: auto; white-space: nowrap; flex-shrink: 0; }
         .tool-btn { padding: 5px 10px; border: 1px solid transparent; background: white; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500; color: #475569; border-color: #e2e8f0; display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
         
+        /* --- IMAGE TOOLBAR (NEW) --- */
+        #img-toolbar {
+            position: absolute; display: none; background: #1e293b; padding: 8px; border-radius: 6px;
+            gap: 8px; z-index: 100; box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            transform: translate(-50%, -100%); margin-top: -10px;
+        }
+        #img-toolbar.visible { display: flex; }
+        #img-toolbar::after {
+            content: ''; position: absolute; bottom: -6px; left: 50%; transform: translateX(-50%);
+            border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 6px solid #1e293b;
+        }
+        .img-action { background: #334155; color: white; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+        .img-action:hover { background: #475569; }
+        .img-action.danger { background: #ef4444; }
+
         main { display: flex; flex: 1; overflow: hidden; position: relative; }
         aside { width: 250px; background: white; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; flex-shrink: 0; z-index: 40; transition: transform 0.3s ease; }
         #sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 30; }
@@ -45,32 +60,30 @@
         .chapter-item.active { background: #eff6ff; color: #2563eb; border-left: 3px solid #2563eb; font-weight: 600; }
         #cover-img { max-width: 100%; height: auto; border: 1px solid #e2e8f0; margin-bottom: 10px; min-height: 140px; background: #f1f5f9; object-fit: contain; }
 
-        /* --- EDITOR STYLES (UPDATED FOR SPACING) --- */
+        /* --- EDITOR STYLES --- */
         .editor-area { flex: 1; background: #cbd5e1; overflow-y: auto; padding: 30px; display: block; text-align: center; -webkit-overflow-scrolling: touch; }
-        .paper { width: 100%; max-width: 800px; min-height: 100%; height: fit-content; background: white; box-shadow: 0 4px 6px rgba(0,0,0,0.05); padding: 50px; margin: 0 auto; display: flex; flex-direction: column; text-align: left; }
+        .paper { width: 100%; max-width: 800px; min-height: 100%; height: fit-content; background: white; box-shadow: 0 4px 6px rgba(0,0,0,0.05); padding: 50px; margin: 0 auto; display: flex; flex-direction: column; text-align: left; position: relative; }
         
         #chapter-title { font-size: 24px; font-weight: 700; border: none; outline: none; width: 100%; margin-bottom: 15px; font-family: serif; border-bottom: 1px solid transparent; }
         
-        #editor { 
-            flex: 1; outline: none; font-family: 'Georgia', serif; font-size: 18px; line-height: 1.5; 
-        }
-        
-        /* FIX: Remove margins to stop skipping lines */
-        #editor p, #editor div { 
-            margin: 0; 
-            padding: 0;
-            min-height: 1em; /* Ensures empty lines can be clicked */
-        }
-        
-        /* Placeholder Logic (Ghost Text) */
-        #editor:empty:before {
-            content: attr(placeholder);
-            color: #94a3b8;
-            pointer-events: none;
-            display: block;
-        }
+        #editor { flex: 1; outline: none; font-family: 'Georgia', serif; font-size: 18px; line-height: 1.5; }
+        #editor p { margin: 0; padding: 0; min-height: 1em; }
+        #editor:empty:before { content: attr(placeholder); color: #94a3b8; pointer-events: none; display: block; }
 
-        #editor img { max-width: 100%; height: auto; display: block; margin: 10px auto; }
+        /* HIGH RES FIX: Strict constraints on images */
+        #editor img { 
+            max-width: 100% !important; 
+            height: auto !important; 
+            display: block; 
+            cursor: pointer;
+            box-sizing: border-box;
+        }
+        
+        /* Selected state for image */
+        #editor img.selected {
+            outline: 3px solid #2563eb;
+            box-shadow: 0 0 10px rgba(37, 99, 235, 0.3);
+        }
 
         @media (max-width: 768px) {
             #mobile-menu-btn { display: block; }
@@ -90,6 +103,18 @@
     <div class="spinner"></div>
     <div id="loader-msg">Initializing...</div>
     <button id="loader-close" onclick="document.getElementById('loader-overlay').classList.remove('active')">Close</button>
+</div>
+
+<div id="img-toolbar">
+    <button class="img-action" onclick="imgResize('100%')">Full</button>
+    <button class="img-action" onclick="imgResize('75%')">75%</button>
+    <button class="img-action" onclick="imgResize('50%')">50%</button>
+    <div style="width:1px; background:#475569; margin:0 4px;"></div>
+    <button class="img-action" onclick="imgAlign('left')">Left</button>
+    <button class="img-action" onclick="imgAlign('center')">Center</button>
+    <button class="img-action" onclick="imgAlign('right')">Right</button>
+    <div style="width:1px; background:#475569; margin:0 4px;"></div>
+    <button class="img-action danger" onclick="imgDelete()">Delete</button>
 </div>
 
 <div id="sidebar-overlay" onclick="toggleSidebar()"></div>
@@ -155,9 +180,9 @@
     </aside>
 
     <div class="editor-area">
-        <div class="paper">
+        <div class="paper" id="paper-container">
             <input type="text" id="chapter-title" placeholder="Chapter Title" oninput="saveCurrent()">
-            <div id="editor" contenteditable="true" placeholder="Start typing..." oninput="saveCurrent()"></div>
+            <div id="editor" contenteditable="true" placeholder="Start typing..." oninput="saveCurrent()" onclick="handleEditorClick(event)"></div>
         </div>
     </div>
 </main>
@@ -165,14 +190,11 @@
 <script>
     let book = { title: "", author: "", css: "", assets: {}, coverPath: null, chapters: [] };
     let currentId = null;
+    let selectedImg = null;
 
     window.onload = function() {
-        // Init with Empty Chapter
         addChapter();
-        
-        // Ensure <p> tags are used for paragraphs by default, not <div>
         document.execCommand('defaultParagraphSeparator', false, 'p');
-
         if(window.innerWidth <= 768) {
             document.querySelector('.tab.mobile-only').style.display = 'block';
             document.getElementById('mobile-title-display').style.display = 'block';
@@ -181,6 +203,55 @@
         }
     };
 
+    // --- IMAGE MANIPULATION ---
+    function handleEditorClick(e) {
+        // Deselect previous
+        if(selectedImg && e.target !== selectedImg) {
+            selectedImg.classList.remove('selected');
+            selectedImg = null;
+            document.getElementById('img-toolbar').classList.remove('visible');
+        }
+
+        // Select new if image
+        if(e.target.tagName === 'IMG') {
+            selectedImg = e.target;
+            selectedImg.classList.add('selected');
+            
+            // Position Toolbar
+            const toolbar = document.getElementById('img-toolbar');
+            const rect = selectedImg.getBoundingClientRect();
+            
+            // Calculate relative to viewport
+            toolbar.style.top = (rect.top + window.scrollY) + 'px';
+            toolbar.style.left = (rect.left + (rect.width/2)) + 'px';
+            toolbar.classList.add('visible');
+        }
+    }
+
+    function imgResize(width) {
+        if(!selectedImg) return;
+        selectedImg.style.width = width;
+        saveCurrent();
+    }
+
+    function imgAlign(align) {
+        if(!selectedImg) return;
+        selectedImg.style.display = 'block';
+        if(align === 'left') { selectedImg.style.margin = '10px auto 10px 0'; }
+        if(align === 'center') { selectedImg.style.margin = '10px auto'; }
+        if(align === 'right') { selectedImg.style.margin = '10px 0 10px auto'; }
+        saveCurrent();
+    }
+
+    function imgDelete() {
+        if(!selectedImg) return;
+        selectedImg.remove();
+        document.getElementById('img-toolbar').classList.remove('visible');
+        selectedImg = null;
+        saveCurrent();
+    }
+
+    // --- GENERAL UI ---
     function toggleSidebar() {
         document.getElementById('sidebar').classList.toggle('open');
         document.getElementById('sidebar-overlay').classList.toggle('active');
@@ -254,15 +325,14 @@
             syncMeta('author', author);
 
             let coverId = null;
-            Array.from(xml.getElementsByTagName("item")).forEach(item => {
-                if(item.getAttribute("properties") === "cover-image") coverId = item.getAttribute("id");
-            });
             const metas = xml.getElementsByTagName("meta");
             for(let m of metas) { if(m.getAttribute("name") === "cover") coverId = m.getAttribute("content"); }
-
             const manifest = {};
             Array.from(xml.getElementsByTagName("item")).forEach(item => {
-                manifest[item.getAttribute("id")] = decodeURI(item.getAttribute("href"));
+                const id = item.getAttribute("id");
+                const href = decodeURI(item.getAttribute("href"));
+                manifest[id] = href;
+                if(item.getAttribute("properties") === "cover-image") coverId = id;
             });
 
             for (let id in manifest) {
@@ -312,7 +382,6 @@
 
             if(book.chapters.length > 0) loadChapter(book.chapters[0].id);
             else addChapter();
-            
             stopLoader();
         } catch (e) {
             failLoader(e.message);
@@ -353,6 +422,10 @@
         const img = document.createElement('img');
         img.src = url;
         img.setAttribute('data-filename', filename);
+        // Force styling constraints immediately
+        img.style.maxWidth = "100%";
+        img.style.display = "block";
+        img.style.margin = "10px auto";
         img.setAttribute('alt', '');
         
         const sel = document.getSelection();
@@ -402,14 +475,12 @@
 
     function addChapter() {
         const id = Date.now();
-        // Create completely empty chapter, placeholder will show
         book.chapters.push({ id, title: "New Chapter", content: "" });
         loadChapter(id);
         if(window.innerWidth <= 768) toggleSidebar();
     }
 
     async function exportEPUB() {
-        // Ensure meta is saved
         book.title = document.getElementById('meta-title').value || "Untitled";
         book.author = document.getElementById('meta-author').value || "Unknown";
 
@@ -436,7 +507,7 @@
                 }
 
                 // CSS Update: Zero margins for paragraphs
-                const css = book.css || `body{padding:5%; line-height:1.5;} p{margin:0; padding:0;} img{max-width:100%}`;
+                const css = book.css || `body{padding:5%; line-height:1.5;} p{margin:0; padding:0;} img{max-width:100%; height:auto;}`;
                 oebps.file("style.css", css);
 
                 let manifest = `<item id="css" href="style.css" media-type="text/css"/>\n` + assetManifest;
@@ -448,14 +519,15 @@
                     const fn = `ch${i+1}.xhtml`;
                     const id = `c${i+1}`;
                     const parser = new DOMParser();
-                    // Ensure content isn't null
                     const doc = parser.parseFromString(ch.content || "<p></p>", "text/html");
 
                     doc.querySelectorAll('img').forEach(img => {
                         const fname = img.getAttribute('data-filename');
                         if(fname && book.assets[fname]) img.setAttribute('src', `images/${fname}`);
                         img.removeAttribute('data-filename');
-                        if(!img.hasAttribute('alt')) img.setAttribute('alt', '');
+                        // Ensure styles are inline for export
+                        if(!img.style.maxWidth) img.style.maxWidth = "100%";
+                        img.classList.remove('selected'); // Clean UI classes
                     });
 
                     let xmlBody = serializer.serializeToString(doc.body);
