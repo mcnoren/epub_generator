@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EPUB Studio v27 - Indent Control</title>
+    <title>EPUB Studio v29 - AutoSave</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
     <style>
         /* --- RESET & BASICS --- */
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -27,6 +28,8 @@
         .actions { display: flex; gap: 8px; }
         .btn { display: flex; align-items: center; gap: 5px; padding: 6px 12px; background: white; border: 1px solid #cbd5e1; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500; color: #334155; }
         .btn-primary { background: #2563eb; color: white; border: none; }
+        .save-indicator { font-size: 11px; color: #64748b; margin-right: 10px; opacity: 0; transition: opacity 0.3s; }
+        .save-indicator.visible { opacity: 1; }
 
         /* --- TOOLBAR --- */
         #main-toolbar { 
@@ -85,7 +88,7 @@
         #chapter-title { font-size: 24px; font-weight: 700; border: none; outline: none; width: 100%; margin-bottom: 15px; font-family: serif; border-bottom: 1px solid transparent; }
         
         #editor { flex: 1; outline: none; font-family: 'Georgia', serif; font-size: 18px; line-height: 1.5; }
-        #editor p { margin: 0; padding: 0; min-height: 1em; } /* Removed automatic indent here */
+        #editor p { margin: 0; padding: 0; min-height: 1em; }
         #editor:empty:before { content: attr(placeholder); color: #94a3b8; pointer-events: none; display: block; }
         
         /* IMAGE STYLES - SIDE BY SIDE SUPPORT */
@@ -142,6 +145,7 @@
         <input type="text" id="meta-title" placeholder="Book Title" oninput="syncMeta('title', this.value)">
         <input type="text" id="meta-author" placeholder="Author" oninput="syncMeta('author', this.value)">
     </div>
+    <div id="save-status" class="save-indicator">Saved</div>
     <div style="flex:1; font-weight:bold; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:none;" id="mobile-title-display">Untitled Book</div>
     <div class="actions">
         <label class="btn">
@@ -160,7 +164,8 @@
     <button class="tool-btn" onclick="format('italic')"><i>I</i></button>
     <button class="tool-btn" onclick="format('formatBlock','h2')">Header</button>
     <button class="tool-btn" onclick="format('formatBlock','p')">Text</button>
-    <button class="tool-btn" onclick="indentAll()" title="Indent all paragraphs">Indent All</button> <button class="tool-btn" onclick="removeGaps()" title="Removes empty lines">✂ Gaps</button>
+    <button class="tool-btn" onclick="indentAll()" title="Indent all paragraphs">Indent All</button>
+    <button class="tool-btn" onclick="removeGaps()" title="Removes empty lines">✂ Gaps</button>
     <label class="tool-btn">
         🖼 Image
         <input type="file" accept="image/*" style="display:none" onchange="insertImageToEditor(this)">
@@ -213,16 +218,43 @@
     let book = { title: "", author: "", css: "", assets: {}, coverPath: null, chapters: [] };
     let currentId = null;
     let selectedImg = null;
+    let saveTimeout = null;
 
     window.onload = function() {
-        addChapter();
         document.execCommand('defaultParagraphSeparator', false, 'p');
         
-        // --- NEW INIT CALLS ---
         setupDragAndDrop();
         setupPaste();
         setupTabKey();
         
+        // --- AUTO-LOAD LOGIC ---
+        // Try to load from browser storage first
+        localforage.getItem('epub_project').then(savedBook => {
+            if(savedBook) {
+                console.log("Restoring from autosave...");
+                book = savedBook;
+                
+                // Regenerate Blobs for images (they expire on reload)
+                restoreBlobUrls();
+                
+                // Restore Metadata UI
+                syncMeta('title', book.title);
+                syncMeta('author', book.author);
+                
+                // Restore Cover
+                renderCoverPreview();
+                
+                // Restore Chapters
+                if(book.chapters.length > 0) loadChapter(book.chapters[0].id);
+                else addChapter();
+            } else {
+                addChapter();
+            }
+        }).catch(err => {
+            console.error(err);
+            addChapter();
+        });
+
         if(window.innerWidth <= 768) {
             document.querySelector('.tab.mobile-only').style.display = 'block';
             document.getElementById('mobile-title-display').style.display = 'block';
@@ -231,7 +263,44 @@
         }
     };
 
-    // --- NEW HELPERS ---
+    // --- AUTO-SAVE LOGIC ---
+    function triggerAutoSave() {
+        const indicator = document.getElementById('save-status');
+        indicator.innerText = "Saving...";
+        indicator.classList.add('visible');
+        
+        clearTimeout(saveTimeout);
+        saveTimeout = setTimeout(() => {
+            localforage.setItem('epub_project', book).then(() => {
+                indicator.innerText = "Saved to Browser";
+                setTimeout(() => indicator.classList.remove('visible'), 2000);
+            }).catch(e => {
+                indicator.innerText = "Save Failed";
+                console.error("Autosave failed", e);
+            });
+        }, 1000); // 1-second debounce
+    }
+
+    function restoreBlobUrls() {
+        // Go through all chapters and refresh img src blobs
+        book.chapters.forEach(ch => {
+            const div = document.createElement('div');
+            div.innerHTML = ch.content;
+            const imgs = div.querySelectorAll('img');
+            let changed = false;
+            imgs.forEach(img => {
+                const fname = img.getAttribute('data-filename');
+                if(fname && book.assets[fname]) {
+                    // Create new blob URL from stored asset
+                    img.src = URL.createObjectURL(book.assets[fname]);
+                    changed = true;
+                }
+            });
+            if(changed) ch.content = div.innerHTML;
+        });
+    }
+
+    // --- UTILS & SETUP ---
     function setupDragAndDrop() {
         const editor = document.getElementById('editor');
         editor.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); });
@@ -305,7 +374,6 @@
         input.value = "";
     }
 
-    // --- INDENT LOGIC ---
     function indentAll() {
         const editor = document.getElementById('editor');
         const paragraphs = editor.querySelectorAll('p');
@@ -315,7 +383,6 @@
         saveCurrent();
     }
 
-    // --- EXISTING LOGIC ---
     function handleEditorClick(e) {
         if(selectedImg && e.target !== selectedImg) {
             selectedImg.classList.remove('selected');
@@ -362,14 +429,18 @@
         } else {
             renderList();
         }
+        triggerAutoSave();
     }
 
     function clearAll() {
         if(!confirm("⚠️ Delete entire book? Cannot undo.")) return;
-        book = { title: "", author: "", css: "", assets: {}, coverPath: null, chapters: [] };
-        syncMeta('title', ''); syncMeta('author', '');
-        renderCoverPreview();
-        addChapter();
+        // Clear local storage too
+        localforage.clear().then(() => {
+            book = { title: "", author: "", css: "", assets: {}, coverPath: null, chapters: [] };
+            syncMeta('title', ''); syncMeta('author', '');
+            renderCoverPreview();
+            addChapter();
+        });
     }
 
     function removeGaps() {
@@ -407,6 +478,7 @@
             document.getElementById('mobile-meta-author').value = val;
             book.author = val;
         }
+        triggerAutoSave();
     }
 
     function resolvePath(base, relative) {
@@ -420,6 +492,7 @@
         return stack.join('/');
     }
 
+    // --- IMPORT LOGIC ---
     async function importEPUB(input) {
         if (!input.files[0]) return;
         startLoader("Importing...");
@@ -523,6 +596,16 @@
                     }
                     if (!chTitle) chTitle = `Chapter ${i+1}`;
 
+                    // --- TITLE CLEANUP START ---
+                    const headings = doc.querySelectorAll('h1, h2, h3, h4, h5');
+                    for (let h of headings) {
+                        if (h.innerText.trim() === chTitle.trim()) {
+                            h.remove();
+                            break;
+                        }
+                    }
+                    // --- TITLE CLEANUP END ---
+
                     book.chapters.push({
                         id: Date.now() + i,
                         title: chTitle,
@@ -533,6 +616,8 @@
 
             if(book.chapters.length > 0) loadChapter(book.chapters[0].id);
             else addChapter();
+            
+            triggerAutoSave(); // Save imported book immediately
             stopLoader();
         } catch (e) {
             failLoader(e.message);
@@ -578,6 +663,7 @@
         book.assets[filename] = file;
         book.coverPath = filename;
         renderCoverPreview();
+        triggerAutoSave();
     }
 
     function renderList() {
@@ -620,6 +706,8 @@
         }
         book.title = document.getElementById('meta-title').value;
         book.author = document.getElementById('meta-author').value;
+        
+        triggerAutoSave(); // <--- Trigger AutoSave on every change
     }
 
     function addChapter() {
@@ -627,6 +715,7 @@
         book.chapters.push({ id, title: "New Chapter", content: "" });
         loadChapter(id);
         if(window.innerWidth <= 768) toggleSidebar();
+        triggerAutoSave();
     }
 
     async function exportEPUB() {
@@ -655,7 +744,7 @@
                     assetManifest += `<item id="${id}" href="images/${name}" media-type="${mime}"${properties}/>\n`;
                 }
 
-                // --- RESTORED DEFAULT CSS (NO FORCED INDENT) ---
+                // Default CSS only - no forced indentation
                 const css = book.css || `body{padding:5%; line-height:1.5;} p{margin:0; padding:0;} img{max-width:100%; height:auto;}`;
                 oebps.file("style.css", css);
 
