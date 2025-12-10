@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EPUB Studio v32 - Multi-Image Import</title>
+    <title>EPUB Studio v33 - Export Fix</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     
     <style id="imported-style"></style>
@@ -297,6 +297,17 @@
     let dragSrcEl = null;
     let currentLinkNode = null;
 
+    // --- HELPER: SAFE UUID (FIX FOR "OBJECT NOT FOUND" ERRORS) ---
+    function generateUUID() {
+        if(typeof crypto !== 'undefined' && crypto.randomUUID) {
+            try { return crypto.randomUUID(); } catch(e) {}
+        }
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+            var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+        });
+    }
+
     window.onload = async function() {
         startLoader("Loading...");
         await initDB();
@@ -333,7 +344,7 @@
         stopLoader();
     };
 
-    // --- LINK TOOL LOGIC ---
+    // --- LINK TOOL ---
     function showLinkDialog() {
         const sel = window.getSelection();
         if(sel.rangeCount > 0) {
@@ -425,7 +436,7 @@
         });
     }
 
-    // --- STANDARD APP LOGIC ---
+    // --- APP LOGIC ---
     function initDB() {
         return new Promise((resolve, reject) => {
             const req = indexedDB.open("EPUBStudioDB", 1);
@@ -472,7 +483,6 @@
                     sel.addRange(range);
                 }
             }
-            // UPDATED LOOP FOR MULTIPLE DRAGGED FILES
             if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
                 Array.from(e.dataTransfer.files).forEach(file => {
                     if (file.type.startsWith('image/')) insertLocalImage(file);
@@ -505,6 +515,7 @@
     }
 
     function insertLocalImage(file) {
+        // Safe filename generation
         const filename = "img_" + Date.now() + "_" + Math.floor(Math.random()*1000) + "." + file.name.split('.').pop();
         book.assets[filename] = file;
         const url = URL.createObjectURL(file);
@@ -530,7 +541,6 @@
         saveCurrent();
     }
 
-    // UPDATED FUNCTION TO HANDLE MULTIPLE FILES
     function insertImageToEditor(input) {
         if(!input.files || input.files.length === 0) return;
         Array.from(input.files).forEach(file => insertLocalImage(file));
@@ -769,6 +779,7 @@
         saveCurrent();
     }
 
+    // --- IMPORT / EXPORT UTILS ---
     function resolvePath(base, relative) {
         const stack = base.split('/'); stack.pop();
         const parts = relative.split('/');
@@ -969,7 +980,7 @@
         setTimeout(async () => {
             try {
                 const zip = new JSZip();
-                const uuid = 'urn:uuid:' + crypto.randomUUID();
+                const uuid = 'urn:uuid:' + generateUUID();
 
                 zip.file("mimetype", "application/epub+zip", { compression: "STORE" });
                 zip.folder("META-INF").file("container.xml", `<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>`);
@@ -979,12 +990,14 @@
 
                 let assetManifest = "";
                 for(let name in book.assets) {
-                    imgFolder.file(name, book.assets[name]);
-                    const mime = name.endsWith('png') ? 'image/png' : 'image/jpeg';
-                    let id = "img_" + name.replace(/[^a-z0-9]/gi, '');
-                    if(name === book.coverPath) id = "cover-image";
-                    let properties = (name === book.coverPath) ? ' properties="cover-image"' : '';
-                    assetManifest += `<item id="${id}" href="images/${name}" media-type="${mime}"${properties}/>\n`;
+                    if (book.assets[name] && book.assets[name] instanceof Blob) {
+                        imgFolder.file(name, book.assets[name]);
+                        const mime = name.endsWith('png') ? 'image/png' : 'image/jpeg';
+                        let id = "img_" + name.replace(/[^a-z0-9]/gi, '');
+                        if(name === book.coverPath) id = "cover-image";
+                        let properties = (name === book.coverPath) ? ' properties="cover-image"' : '';
+                        assetManifest += `<item id="${id}" href="images/${name}" media-type="${mime}"${properties}/>\n`;
+                    }
                 }
 
                 let baseCss = book.css || `body{padding:5%; line-height:1.5;} p{margin:0; padding:0;} img{max-width:100%; height:auto;}`;
@@ -1002,44 +1015,50 @@
                     idToFilename[ch.id] = `ch${i+1}.xhtml`;
                 });
 
+                // TRY/CATCH PER CHAPTER to prevent full crash
                 book.chapters.forEach((ch, i) => {
-                    const fn = `ch${i+1}.xhtml`;
-                    const id = `c${i+1}`;
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(ch.content || "<p></p>", "text/html");
+                    try {
+                        const fn = `ch${i+1}.xhtml`;
+                        const id = `c${i+1}`;
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(ch.content || "<p></p>", "text/html");
 
-                    doc.querySelectorAll('img').forEach(img => {
-                        const fname = img.getAttribute('data-filename');
-                        if(fname && book.assets[fname]) img.setAttribute('src', `images/${fname}`);
-                        img.removeAttribute('data-filename');
-                        if(!img.hasAttribute('alt')) img.setAttribute('alt', '');
-                        img.classList.remove('selected');
-                    });
+                        doc.querySelectorAll('img').forEach(img => {
+                            const fname = img.getAttribute('data-filename');
+                            if(fname && book.assets[fname]) img.setAttribute('src', `images/${fname}`);
+                            img.removeAttribute('data-filename');
+                            if(!img.hasAttribute('alt')) img.setAttribute('alt', '');
+                            img.classList.remove('selected');
+                        });
 
-                    doc.querySelectorAll('a[data-link-id]').forEach(a => {
-                        const targetId = a.getAttribute('data-link-id');
-                        const hash = a.getAttribute('data-link-hash');
-                        const targetFile = idToFilename[targetId];
-                        
-                        if(targetFile) {
-                            let newHref = targetFile;
-                            if(hash) newHref += "#" + hash;
-                            a.setAttribute('href', newHref);
-                        }
-                        a.removeAttribute('data-link-id');
-                        a.removeAttribute('data-link-hash');
-                        a.removeAttribute('onclick');
-                    });
+                        doc.querySelectorAll('a[data-link-id]').forEach(a => {
+                            const targetId = a.getAttribute('data-link-id');
+                            const hash = a.getAttribute('data-link-hash');
+                            const targetFile = idToFilename[targetId];
+                            
+                            if(targetFile) {
+                                let newHref = targetFile;
+                                if(hash) newHref += "#" + hash;
+                                a.setAttribute('href', newHref);
+                            }
+                            a.removeAttribute('data-link-id');
+                            a.removeAttribute('data-link-hash');
+                            a.removeAttribute('onclick');
+                        });
 
-                    let xmlBody = serializer.serializeToString(doc.body);
-                    xmlBody = xmlBody.replace(/^<body[^>]*>/i, '').replace(/<\/body>$/i, '');
+                        let xmlBody = serializer.serializeToString(doc.body);
+                        xmlBody = xmlBody.replace(/^<body[^>]*>/i, '').replace(/<\/body>$/i, '');
 
-                    const xhtml = `<?xml version="1.0" encoding="utf-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>${ch.title}</title><link rel="stylesheet" href="style.css"/></head><body><h2>${ch.title}</h2>${xmlBody}</body></html>`;
+                        const xhtml = `<?xml version="1.0" encoding="utf-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>${ch.title}</title><link rel="stylesheet" href="style.css"/></head><body><h2>${ch.title}</h2>${xmlBody}</body></html>`;
 
-                    oebps.file(fn, xhtml);
-                    manifest += `<item id="${id}" href="${fn}" media-type="application/xhtml+xml"/>\n`;
-                    spine += `<itemref idref="${id}"/>\n`;
-                    nav += `<navPoint id="n${i}" playOrder="${i}"><navLabel><text>${ch.title}</text></navLabel><content src="${fn}"/></navPoint>`;
+                        oebps.file(fn, xhtml);
+                        manifest += `<item id="${id}" href="${fn}" media-type="application/xhtml+xml"/>\n`;
+                        spine += `<itemref idref="${id}"/>\n`;
+                        nav += `<navPoint id="n${i}" playOrder="${i}"><navLabel><text>${ch.title}</text></navLabel><content src="${fn}"/></navPoint>`;
+                    } catch(err) {
+                        console.error("Error processing chapter " + (i+1), err);
+                        alert("Warning: Could not export Chapter " + (i+1) + ". " + err.message);
+                    }
                 });
 
                 let coverMeta = book.coverPath ? `<meta name="cover" content="cover-image" />` : "";
