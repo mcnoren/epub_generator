@@ -3,9 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EPUB Studio v29 - AutoSave</title>
+    <title>EPUB Studio v26 - Layout & Undo</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
+    
+    <style id="imported-style"></style>
+
     <style>
         /* --- RESET & BASICS --- */
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -28,8 +30,6 @@
         .actions { display: flex; gap: 8px; }
         .btn { display: flex; align-items: center; gap: 5px; padding: 6px 12px; background: white; border: 1px solid #cbd5e1; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500; color: #334155; }
         .btn-primary { background: #2563eb; color: white; border: none; }
-        .save-indicator { font-size: 11px; color: #64748b; margin-right: 10px; opacity: 0; transition: opacity 0.3s; }
-        .save-indicator.visible { opacity: 1; }
 
         /* --- TOOLBAR --- */
         #main-toolbar { 
@@ -88,12 +88,15 @@
         #chapter-title { font-size: 24px; font-weight: 700; border: none; outline: none; width: 100%; margin-bottom: 15px; font-family: serif; border-bottom: 1px solid transparent; }
         
         #editor { flex: 1; outline: none; font-family: 'Georgia', serif; font-size: 18px; line-height: 1.5; }
-        #editor p { margin: 0; padding: 0; min-height: 1em; }
+        
+        /* Indent paragraphs by default */
+        #editor p { margin: 0; padding: 0; min-height: 1em; text-indent: 1.5em; }
+        
         #editor:empty:before { content: attr(placeholder); color: #94a3b8; pointer-events: none; display: block; }
         
         /* IMAGE STYLES - SIDE BY SIDE SUPPORT */
         #editor img { 
-            display: inline-block;
+            display: inline-block; 
             vertical-align: top;
             margin: 5px; 
             cursor: pointer; 
@@ -145,7 +148,6 @@
         <input type="text" id="meta-title" placeholder="Book Title" oninput="syncMeta('title', this.value)">
         <input type="text" id="meta-author" placeholder="Author" oninput="syncMeta('author', this.value)">
     </div>
-    <div id="save-status" class="save-indicator">Saved</div>
     <div style="flex:1; font-weight:bold; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:none;" id="mobile-title-display">Untitled Book</div>
     <div class="actions">
         <label class="btn">
@@ -157,20 +159,42 @@
 </header>
 
 <div id="main-toolbar">
-    <button class="tool-btn" onclick="format('undo')" title="Undo">↶ Undo</button>
-    <button class="tool-btn" onclick="format('redo')" title="Redo">↷ Redo</button>
+    <button class="tool-btn" onclick="format('undo')" title="Undo">↶</button>
+    <button class="tool-btn" onclick="format('redo')" title="Redo">↷</button>
     <div style="width:1px; height:20px; background:#e2e8f0; margin:0 5px;"></div>
-    <button class="tool-btn" onclick="format('bold')"><b>B</b></button>
-    <button class="tool-btn" onclick="format('italic')"><i>I</i></button>
+    
+    <button class="tool-btn" onclick="format('bold')" title="Bold"><b>B</b></button>
+    <button class="tool-btn" onclick="format('italic')" title="Italic"><i>I</i></button>
+    <button class="tool-btn" onclick="format('underline')" title="Underline"><u>U</u></button>
+    <button class="tool-btn" onclick="format('strikeThrough')" title="Strikethrough"><s>S</s></button>
+    
+    <div style="width:1px; height:20px; background:#e2e8f0; margin:0 5px;"></div>
+
+    <button class="tool-btn" onclick="format('justifyLeft')" title="Align Left">Left</button>
+    <button class="tool-btn" onclick="format('justifyCenter')" title="Align Center">Center</button>
+    <button class="tool-btn" onclick="format('justifyRight')" title="Align Right">Right</button>
+    <button class="tool-btn" onclick="format('justifyFull')" title="Justify">Justify</button>
+
+    <div style="width:1px; height:20px; background:#e2e8f0; margin:0 5px;"></div>
+
+    <button class="tool-btn" onclick="format('insertUnorderedList')" title="Bullet List">• List</button>
+    <button class="tool-btn" onclick="format('insertOrderedList')" title="Number List">1. List</button>
+    <button class="tool-btn" onclick="format('indent')" title="Indent">➡</button>
+    <button class="tool-btn" onclick="format('outdent')" title="Outdent">⬅</button>
+    <button class="tool-btn" onclick="format('insertHorizontalRule')" title="Separator">---</button>
+
+    <div style="width:1px; height:20px; background:#e2e8f0; margin:0 5px;"></div>
+
     <button class="tool-btn" onclick="format('formatBlock','h2')">Header</button>
     <button class="tool-btn" onclick="format('formatBlock','p')">Text</button>
-    <button class="tool-btn" onclick="indentAll()" title="Indent all paragraphs">Indent All</button>
+    <button class="tool-btn" onclick="format('removeFormat')" title="Clear Formatting">Clean</button>
     <button class="tool-btn" onclick="removeGaps()" title="Removes empty lines">✂ Gaps</button>
+    
     <label class="tool-btn">
         🖼 Image
         <input type="file" accept="image/*" style="display:none" onchange="insertImageToEditor(this)">
     </label>
-    <button class="tool-btn" onclick="format('removeFormat')">Clean</button>
+
     <button class="tool-btn danger" onclick="clearAll()">🗑 Clear All</button>
 </div>
 
@@ -218,42 +242,14 @@
     let book = { title: "", author: "", css: "", assets: {}, coverPath: null, chapters: [] };
     let currentId = null;
     let selectedImg = null;
-    let saveTimeout = null;
 
     window.onload = function() {
+        addChapter();
         document.execCommand('defaultParagraphSeparator', false, 'p');
         
         setupDragAndDrop();
         setupPaste();
         setupTabKey();
-        
-        // --- AUTO-LOAD LOGIC ---
-        // Try to load from browser storage first
-        localforage.getItem('epub_project').then(savedBook => {
-            if(savedBook) {
-                console.log("Restoring from autosave...");
-                book = savedBook;
-                
-                // Regenerate Blobs for images (they expire on reload)
-                restoreBlobUrls();
-                
-                // Restore Metadata UI
-                syncMeta('title', book.title);
-                syncMeta('author', book.author);
-                
-                // Restore Cover
-                renderCoverPreview();
-                
-                // Restore Chapters
-                if(book.chapters.length > 0) loadChapter(book.chapters[0].id);
-                else addChapter();
-            } else {
-                addChapter();
-            }
-        }).catch(err => {
-            console.error(err);
-            addChapter();
-        });
 
         if(window.innerWidth <= 768) {
             document.querySelector('.tab.mobile-only').style.display = 'block';
@@ -263,49 +259,17 @@
         }
     };
 
-    // --- AUTO-SAVE LOGIC ---
-    function triggerAutoSave() {
-        const indicator = document.getElementById('save-status');
-        indicator.innerText = "Saving...";
-        indicator.classList.add('visible');
-        
-        clearTimeout(saveTimeout);
-        saveTimeout = setTimeout(() => {
-            localforage.setItem('epub_project', book).then(() => {
-                indicator.innerText = "Saved to Browser";
-                setTimeout(() => indicator.classList.remove('visible'), 2000);
-            }).catch(e => {
-                indicator.innerText = "Save Failed";
-                console.error("Autosave failed", e);
-            });
-        }, 1000); // 1-second debounce
-    }
+    // --- SETUP FUNCTIONS ---
 
-    function restoreBlobUrls() {
-        // Go through all chapters and refresh img src blobs
-        book.chapters.forEach(ch => {
-            const div = document.createElement('div');
-            div.innerHTML = ch.content;
-            const imgs = div.querySelectorAll('img');
-            let changed = false;
-            imgs.forEach(img => {
-                const fname = img.getAttribute('data-filename');
-                if(fname && book.assets[fname]) {
-                    // Create new blob URL from stored asset
-                    img.src = URL.createObjectURL(book.assets[fname]);
-                    changed = true;
-                }
-            });
-            if(changed) ch.content = div.innerHTML;
-        });
-    }
-
-    // --- UTILS & SETUP ---
     function setupDragAndDrop() {
         const editor = document.getElementById('editor');
-        editor.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); });
+        editor.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+        });
         editor.addEventListener('drop', (e) => {
-            e.preventDefault(); e.stopPropagation();
+            e.preventDefault();
+            e.stopPropagation();
             if (document.caretRangeFromPoint) {
                 const range = document.caretRangeFromPoint(e.clientX, e.clientY);
                 if (range) {
@@ -323,7 +287,8 @@
 
     function setupPaste() {
         document.getElementById('editor').addEventListener('paste', (e) => {
-            const items = (e.clipboardData || window.clipboardData).items;
+            const clipboardData = e.clipboardData || window.clipboardData;
+            const items = clipboardData.items;
             for (let i = 0; i < items.length; i++) {
                 if (items[i].type.indexOf("image") === 0) {
                     e.preventDefault();
@@ -358,6 +323,7 @@
         
         const editor = document.getElementById('editor');
         const sel = document.getSelection();
+        
         if (sel.rangeCount > 0 && editor.contains(sel.getRangeAt(0).commonAncestorContainer)) {
             const range = sel.getRangeAt(0);
             range.insertNode(img);
@@ -365,6 +331,7 @@
         } else {
             editor.appendChild(img);
         }
+        
         saveCurrent();
     }
 
@@ -374,15 +341,18 @@
         input.value = "";
     }
 
-    function indentAll() {
-        const editor = document.getElementById('editor');
-        const paragraphs = editor.querySelectorAll('p');
-        paragraphs.forEach(p => {
-            p.style.textIndent = '1.5em';
-        });
-        saveCurrent();
+    function applyImportedStyles() {
+        const styleTag = document.getElementById('imported-style');
+        if (!book.css) {
+            styleTag.innerHTML = "";
+            return;
+        }
+        // Scope CSS to #editor instead of body
+        let scopedCSS = book.css.replace(/(^|\}|\{)\s*body/gi, '$1 #editor');
+        styleTag.innerHTML = scopedCSS;
     }
 
+    // --- LOGIC ---
     function handleEditorClick(e) {
         if(selectedImg && e.target !== selectedImg) {
             selectedImg.classList.remove('selected');
@@ -392,8 +362,10 @@
         if(e.target.tagName === 'IMG') {
             selectedImg = e.target;
             selectedImg.classList.add('selected');
+            
             let w = selectedImg.style.width || "30%";
             document.querySelector('input[type=range]').value = parseInt(w);
+
             const toolbar = document.getElementById('img-toolbar');
             const rect = selectedImg.getBoundingClientRect();
             toolbar.style.top = (rect.top + window.scrollY) + 'px';
@@ -402,7 +374,12 @@
         }
     }
 
-    function imgSlider(val) { if(selectedImg) { selectedImg.style.width = val + "%"; saveCurrent(); } }
+    function imgSlider(val) {
+        if(!selectedImg) return;
+        selectedImg.style.width = val + "%";
+        saveCurrent();
+    }
+
     function imgFloat(type) {
         if(!selectedImg) return;
         if(type === 'left') { selectedImg.style.float = 'left'; selectedImg.style.margin = '0 10px 5px 0'; }
@@ -429,18 +406,15 @@
         } else {
             renderList();
         }
-        triggerAutoSave();
     }
 
     function clearAll() {
         if(!confirm("⚠️ Delete entire book? Cannot undo.")) return;
-        // Clear local storage too
-        localforage.clear().then(() => {
-            book = { title: "", author: "", css: "", assets: {}, coverPath: null, chapters: [] };
-            syncMeta('title', ''); syncMeta('author', '');
-            renderCoverPreview();
-            addChapter();
-        });
+        book = { title: "", author: "", css: "", assets: {}, coverPath: null, chapters: [] };
+        syncMeta('title', ''); syncMeta('author', '');
+        applyImportedStyles();
+        renderCoverPreview();
+        addChapter();
     }
 
     function removeGaps() {
@@ -452,6 +426,7 @@
         saveCurrent();
     }
 
+    // --- STANDARD UI ---
     function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); document.getElementById('sidebar-overlay').classList.toggle('active'); }
     function startLoader(msg) { document.getElementById('loader-overlay').classList.add('active'); document.getElementById('loader-msg').innerText = msg; document.querySelector('.spinner').style.display='block'; document.getElementById('loader-close').style.display='none'; }
     function failLoader(err) { document.getElementById('loader-msg').innerText = "Error: "+err; document.querySelector('.spinner').style.display='none'; document.getElementById('loader-close').style.display='block'; }
@@ -478,9 +453,9 @@
             document.getElementById('mobile-meta-author').value = val;
             book.author = val;
         }
-        triggerAutoSave();
     }
 
+    // --- IMPORT & EXPORT ---
     function resolvePath(base, relative) {
         const stack = base.split('/'); stack.pop();
         const parts = relative.split('/');
@@ -492,7 +467,6 @@
         return stack.join('/');
     }
 
-    // --- IMPORT LOGIC ---
     async function importEPUB(input) {
         if (!input.files[0]) return;
         startLoader("Importing...");
@@ -596,16 +570,6 @@
                     }
                     if (!chTitle) chTitle = `Chapter ${i+1}`;
 
-                    // --- TITLE CLEANUP START ---
-                    const headings = doc.querySelectorAll('h1, h2, h3, h4, h5');
-                    for (let h of headings) {
-                        if (h.innerText.trim() === chTitle.trim()) {
-                            h.remove();
-                            break;
-                        }
-                    }
-                    // --- TITLE CLEANUP END ---
-
                     book.chapters.push({
                         id: Date.now() + i,
                         title: chTitle,
@@ -617,7 +581,7 @@
             if(book.chapters.length > 0) loadChapter(book.chapters[0].id);
             else addChapter();
             
-            triggerAutoSave(); // Save imported book immediately
+            applyImportedStyles();
             stopLoader();
         } catch (e) {
             failLoader(e.message);
@@ -663,7 +627,6 @@
         book.assets[filename] = file;
         book.coverPath = filename;
         renderCoverPreview();
-        triggerAutoSave();
     }
 
     function renderList() {
@@ -706,8 +669,6 @@
         }
         book.title = document.getElementById('meta-title').value;
         book.author = document.getElementById('meta-author').value;
-        
-        triggerAutoSave(); // <--- Trigger AutoSave on every change
     }
 
     function addChapter() {
@@ -715,7 +676,6 @@
         book.chapters.push({ id, title: "New Chapter", content: "" });
         loadChapter(id);
         if(window.innerWidth <= 768) toggleSidebar();
-        triggerAutoSave();
     }
 
     async function exportEPUB() {
@@ -744,9 +704,11 @@
                     assetManifest += `<item id="${id}" href="images/${name}" media-type="${mime}"${properties}/>\n`;
                 }
 
-                // Default CSS only - no forced indentation
-                const css = book.css || `body{padding:5%; line-height:1.5;} p{margin:0; padding:0;} img{max-width:100%; height:auto;}`;
-                oebps.file("style.css", css);
+                // Append text-indent rule to whatever CSS we have
+                let baseCss = book.css || `body{padding:5%; line-height:1.5;} p{margin:0; padding:0;} img{max-width:100%; height:auto;}`;
+                const finalCss = baseCss + "\n p { text-indent: 1.5em; }";
+                
+                oebps.file("style.css", finalCss);
 
                 let manifest = `<item id="css" href="style.css" media-type="text/css"/>\n` + assetManifest;
                 let spine = "";
