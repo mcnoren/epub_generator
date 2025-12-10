@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EPUB Studio v28 - Links & AutoSave</title>
+    <title>EPUB Studio v29 - Reorder & Fixes</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     
     <style id="imported-style"></style>
@@ -22,7 +22,7 @@
         #loader-msg { font-size: 1.1rem; font-weight: 600; color: #1e293b; }
         #loader-close { padding: 10px 20px; background: #ef4444; color: white; border: none; border-radius: 6px; cursor: pointer; display: none; margin-top: 15px; }
 
-        /* --- STATUS BAR (SAVED STATE) --- */
+        /* --- STATUS BAR --- */
         #status-bar { font-size: 12px; color: #64748b; margin-right: 15px; font-weight: 500; min-width: 60px; text-align: right; }
 
         /* --- HEADER --- */
@@ -76,11 +76,16 @@
         .sidebar-content.active { display: block; }
         
         .chapter-list { list-style: none; padding: 0; margin: 0; }
-        .chapter-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 15px; border-bottom: 1px solid #f1f5f9; cursor: pointer; font-size: 14px; }
-        .chapter-item span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+        .chapter-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 15px; border-bottom: 1px solid #f1f5f9; cursor: pointer; font-size: 14px; background: white; }
+        .chapter-item span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; pointer-events: none; }
         .chapter-item.active { background: #eff6ff; color: #2563eb; border-left: 3px solid #2563eb; font-weight: 600; }
+        /* Dragging visuals */
+        .chapter-item.dragging { opacity: 0.5; background: #f1f5f9; border: 2px dashed #94a3b8; }
+        
         .delete-icon { opacity: 0.4; padding: 4px 8px; font-size: 16px; color: #dc2626; cursor: pointer; transition: opacity 0.2s; }
         .delete-icon:hover { opacity: 1; background: #fee2e2; border-radius: 4px; }
+        .drag-handle { cursor: grab; padding-right: 10px; opacity: 0.3; font-size: 16px; }
+        .drag-handle:hover { opacity: 1; }
 
         #cover-img { max-width: 100%; height: auto; border: 1px solid #e2e8f0; margin-bottom: 10px; min-height: 140px; background: #f1f5f9; object-fit: contain; }
 
@@ -94,8 +99,6 @@
         #editor p { margin: 0; padding: 0; min-height: 1em; text-indent: 1.5em; }
         #editor blockquote { margin: 1em 40px; color: #334155; }
         #editor:empty:before { content: attr(placeholder); color: #94a3b8; pointer-events: none; display: block; }
-        
-        /* Links in Editor */
         #editor a { color: #2563eb; text-decoration: underline; cursor: pointer; }
 
         #editor img { 
@@ -244,6 +247,7 @@
     let selectedImg = null;
     let db = null;
     let saveTimeout = null;
+    let dragSrcEl = null;
 
     // --- INITIALIZATION ---
     window.onload = async function() {
@@ -253,13 +257,8 @@
         const saved = await loadBookFromDB();
         if(saved) {
             book = saved;
-            // Restore assets URLs
             for(let key in book.assets) {
-                // Ensure assets are valid blobs/files
-                if(!(book.assets[key] instanceof Blob)) {
-                    // Fallback if data corruption
-                    delete book.assets[key]; 
-                }
+                if(!(book.assets[key] instanceof Blob)) delete book.assets[key]; 
             }
             applyImportedStyles();
             renderCoverPreview();
@@ -276,7 +275,7 @@
         setupDragAndDrop();
         setupPaste();
         setupTabKey();
-        setupLinkNavigation(); // NEW: Handle internal links
+        setupLinkNavigation();
 
         if(window.innerWidth <= 768) {
             document.querySelector('.tab.mobile-only').style.display = 'block';
@@ -371,28 +370,21 @@
     }
 
     function setupLinkNavigation() {
-        // Intercept clicks on links in the editor
         document.getElementById('editor').addEventListener('click', (e) => {
-            // Find closest anchor tag
             const link = e.target.closest('a');
             if (link) {
-                // If it's an internal link we generated
                 const targetId = link.getAttribute('data-link-id');
                 if (targetId) {
-                    e.preventDefault(); // Stop browser from trying to follow href
-                    
-                    // Look for the chapter
+                    e.preventDefault();
                     const targetChapter = book.chapters.find(c => c.id == targetId);
                     if (targetChapter) {
                         loadChapter(targetChapter.id);
-                        
-                        // Handle Hash/Anchors if present
                         const hash = link.getAttribute('data-link-hash');
                         if (hash) {
                             setTimeout(() => {
                                 const anchorEl = document.getElementById(hash);
                                 if (anchorEl) anchorEl.scrollIntoView();
-                            }, 100); // Small delay to allow render
+                            }, 100);
                         }
                     } else {
                         alert("Linked chapter not found.");
@@ -499,7 +491,7 @@
         } else {
             renderList();
         }
-        saveCurrent(); // Trigger save on structure change
+        saveCurrent();
     }
 
     function clearAll() {
@@ -509,7 +501,7 @@
         applyImportedStyles();
         renderCoverPreview();
         addChapter();
-        saveCurrent(); // Save empty state
+        saveCurrent();
     }
 
     function removeGaps() {
@@ -570,26 +562,83 @@
         saveCurrent();
     }
 
+    // --- RENDER LIST & DRAG-DROP ---
     function renderList() {
         const list = document.getElementById('chapter-list');
         list.innerHTML = '';
         book.chapters.forEach((c, i) => {
             const li = document.createElement('li');
             li.className = `chapter-item ${c.id === currentId ? 'active' : ''}`;
+            li.draggable = true;
+            li.dataset.id = c.id;
+            
+            // Drag Events
+            li.addEventListener('dragstart', handleDragStart);
+            li.addEventListener('dragover', handleDragOver);
+            li.addEventListener('drop', handleDrop);
+            li.addEventListener('dragend', handleDragEnd);
+
+            // Handle
+            const handle = document.createElement('span');
+            handle.innerHTML = '⋮⋮';
+            handle.className = 'drag-handle';
+            li.appendChild(handle);
+
             const span = document.createElement('span');
             span.innerText = c.title || `Chapter ${i+1}`;
             li.appendChild(span);
+            
             const del = document.createElement('div');
             del.innerHTML = '🗑';
             del.className = 'delete-icon';
             del.onclick = (e) => deleteChapter(c.id, e);
             li.appendChild(del);
-            li.onclick = () => {
+            
+            li.onclick = (e) => {
+                if(e.target.className.includes('delete-icon')) return;
                 loadChapter(c.id);
                 if(window.innerWidth <= 768) toggleSidebar();
             };
             list.appendChild(li);
         });
+    }
+
+    function handleDragStart(e) {
+        dragSrcEl = this;
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/html', this.innerHTML);
+        this.classList.add('dragging');
+    }
+
+    function handleDragOver(e) {
+        if (e.preventDefault) e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        return false;
+    }
+
+    function handleDrop(e) {
+        if (e.stopPropagation) e.stopPropagation();
+        if (dragSrcEl !== this) {
+            // Reorder Data
+            const srcId = parseInt(dragSrcEl.dataset.id);
+            const targetId = parseInt(this.dataset.id);
+            
+            const srcIdx = book.chapters.findIndex(c => c.id === srcId);
+            const targetIdx = book.chapters.findIndex(c => c.id === targetId);
+
+            if(srcIdx >= 0 && targetIdx >= 0) {
+                const [moved] = book.chapters.splice(srcIdx, 1);
+                book.chapters.splice(targetIdx, 0, moved);
+                renderList();
+                saveCurrent();
+            }
+        }
+        return false;
+    }
+
+    function handleDragEnd() {
+        this.classList.remove('dragging');
+        document.querySelectorAll('.chapter-item').forEach(item => item.classList.remove('dragging'));
     }
 
     function loadChapter(id) {
@@ -600,7 +649,6 @@
         renderList();
     }
 
-    // --- AUTO SAVE LOGIC ---
     function saveCurrent() {
         const c = book.chapters.find(x => x.id === currentId);
         if(c) {
@@ -612,7 +660,6 @@
         book.title = document.getElementById('meta-title').value;
         book.author = document.getElementById('meta-author').value;
 
-        // Debounce database write
         document.getElementById('status-bar').innerText = "Saving...";
         clearTimeout(saveTimeout);
         saveTimeout = setTimeout(saveBookToDB, 1000);
@@ -626,7 +673,7 @@
         saveCurrent();
     }
 
-    // --- IMPORT & EXPORT UTILS ---
+    // --- IMPORT UTILS ---
     function resolvePath(base, relative) {
         const stack = base.split('/'); stack.pop();
         const parts = relative.split('/');
@@ -655,7 +702,6 @@
         try {
             const zip = new JSZip();
             const content = await zip.loadAsync(input.files[0]);
-            // Reset book
             book = { title: "", author: "", css: "", assets: {}, coverPath: null, chapters: [] };
             
             let opfPath = null;
@@ -681,6 +727,7 @@
             const metas = xml.getElementsByTagName("meta");
             for(let m of metas) { if(m.getAttribute("name") === "cover") coverId = m.getAttribute("content"); }
             
+            // Manifest Map
             const manifest = {};
             Array.from(xml.getElementsByTagName("item")).forEach(item => {
                 const id = item.getAttribute("id");
@@ -689,6 +736,21 @@
                 if(item.getAttribute("properties") === "cover-image") coverId = id;
             });
 
+            // Identify Extra "Cover HTML" pages to remove
+            const filesToSkip = new Set();
+            const guide = xml.getElementsByTagName("guide")[0];
+            if(guide) {
+                Array.from(guide.getElementsByTagName("reference")).forEach(ref => {
+                    // If it's the cover html or title page, mark path to skip
+                    if(ref.getAttribute("type") === "cover" || ref.getAttribute("type") === "title-page") {
+                        const href = decodeURI(ref.getAttribute("href"));
+                        const fullPath = resolvePath(opfPath, href);
+                        filesToSkip.add(fullPath);
+                    }
+                });
+            }
+
+            // Load Assets
             for (let id in manifest) {
                 const href = manifest[id];
                 const fullPath = resolvePath(opfPath, href);
@@ -703,12 +765,31 @@
                 }
             }
 
+            // Parse TOC (NCX) for Correct Titles
             let tocMap = {};
-            // (Simple TOC parsing omitted for brevity, standard chapter titles usually used)
+            const spineTag = xml.getElementsByTagName("spine")[0];
+            const tocId = spineTag.getAttribute("toc");
+            if (tocId && manifest[tocId]) {
+                const tocHref = manifest[tocId];
+                const fullTocPath = resolvePath(opfPath, tocHref);
+                const tocFile = findFile(content, fullTocPath);
+                if (tocFile) {
+                    const tocTxt = await tocFile.async("text");
+                    const tocXml = parser.parseFromString(tocTxt, "text/xml");
+                    Array.from(tocXml.getElementsByTagName("navPoint")).forEach(np => {
+                        const label = np.getElementsByTagName("text")[0]?.textContent;
+                        let src = np.getElementsByTagName("content")[0]?.getAttribute("src");
+                        if (src && label) {
+                            src = decodeURI(src);
+                            if(src.includes('#')) src = src.split('#')[0];
+                            const fullSrc = resolvePath(opfPath, src);
+                            tocMap[fullSrc] = label.trim();
+                        }
+                    });
+                }
+            }
 
-            // MAP file paths to Chapter IDs (for linking)
             const pathMap = {}; 
-            
             const spine = Array.from(xml.getElementsByTagName("itemref"));
             for (let i = 0; i < spine.length; i++) {
                 const idRef = spine[i].getAttribute("idref");
@@ -716,17 +797,20 @@
                 if (!href) continue;
                 
                 const fullPath = resolvePath(opfPath, href);
+                
+                // SKIPPING LOGIC: If this file is marked as the cover/title page in Guide
+                if (filesToSkip.has(fullPath)) continue;
+
                 const fileObj = findFile(content, fullPath);
                 
                 if (fileObj) {
                     const html = await fileObj.async("text");
                     const doc = parser.parseFromString(html, "text/html");
                     
-                    // Basic Title Extraction
-                    let chTitle = doc.querySelector('h1, h2, title')?.innerText.trim() || `Chapter ${i+1}`;
-                    const chapterId = Date.now() + i;
+                    // PREFER TOC TITLE, then H1, then Fallback
+                    let chTitle = tocMap[fullPath] || doc.querySelector('h1, h2, title')?.innerText.trim() || `Chapter ${i+1}`;
                     
-                    // Store full path -> ID mapping
+                    const chapterId = Date.now() + i;
                     pathMap[fullPath] = chapterId;
 
                     processDocImages(doc);
@@ -735,12 +819,12 @@
                         id: chapterId,
                         title: chTitle,
                         content: doc.body.innerHTML,
-                        tempPath: fullPath // Keep temporarily to resolve relative links
+                        tempPath: fullPath 
                     });
                 }
             }
 
-            // POST-PROCESS: Resolve Links
+            // Link Resolution
             book.chapters.forEach(ch => {
                 const tempDiv = document.createElement('div');
                 tempDiv.innerHTML = ch.content;
@@ -750,19 +834,15 @@
                 links.forEach(a => {
                     const href = a.getAttribute('href');
                     if(href && !href.startsWith('http') && !href.startsWith('mailto:')) {
-                        // Handle anchors
                         const [pathPart, hashPart] = href.split('#');
-                        
-                        // Resolve relative to current chapter file
                         if(pathPart) {
                             const absoluteTarget = resolvePath(ch.tempPath, pathPart);
-                            // Find ID
                             const targetId = pathMap[absoluteTarget];
                             if(targetId) {
                                 a.setAttribute('data-link-id', targetId);
                                 if(hashPart) a.setAttribute('data-link-hash', hashPart);
-                                a.setAttribute('href', '#'); // Disable default nav
-                                a.onclick = (e) => e.preventDefault(); // Safety
+                                a.setAttribute('href', '#'); 
+                                a.onclick = (e) => e.preventDefault();
                                 changed = true;
                             }
                         }
@@ -770,7 +850,7 @@
                 });
 
                 if(changed) ch.content = tempDiv.innerHTML;
-                delete ch.tempPath; // Cleanup
+                delete ch.tempPath; 
             });
 
             if(book.chapters.length > 0) loadChapter(book.chapters[0].id);
@@ -836,7 +916,6 @@
                 let nav = "";
                 const serializer = new XMLSerializer();
 
-                // Create Mapping of ID -> OutputFilename for Link Resolution
                 const idToFilename = {};
                 book.chapters.forEach((ch, i) => {
                     idToFilename[ch.id] = `ch${i+1}.xhtml`;
@@ -848,7 +927,6 @@
                     const parser = new DOMParser();
                     const doc = parser.parseFromString(ch.content || "<p></p>", "text/html");
 
-                    // 1. Process Images
                     doc.querySelectorAll('img').forEach(img => {
                         const fname = img.getAttribute('data-filename');
                         if(fname && book.assets[fname]) img.setAttribute('src', `images/${fname}`);
@@ -857,7 +935,6 @@
                         img.classList.remove('selected');
                     });
 
-                    // 2. Process Internal Links
                     doc.querySelectorAll('a[data-link-id]').forEach(a => {
                         const targetId = a.getAttribute('data-link-id');
                         const hash = a.getAttribute('data-link-hash');
@@ -868,7 +945,6 @@
                             if(hash) newHref += "#" + hash;
                             a.setAttribute('href', newHref);
                         }
-                        // Remove internal markers
                         a.removeAttribute('data-link-id');
                         a.removeAttribute('data-link-hash');
                         a.removeAttribute('onclick');
