@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EPUB Studio v31 - Max Width Sidebar</title>
+    <title>EPUB Studio v32 - Multi-Image Import</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     
     <style id="imported-style"></style>
@@ -82,7 +82,7 @@
         
         .chapter-list { list-style: none; padding: 0; margin: 0; }
         
-        /* --- SIDEBAR ITEM STYLES (Clean Left Align) --- */
+        /* --- SIDEBAR ITEM STYLES --- */
         .chapter-item { 
             display: flex; 
             align-items: center; 
@@ -92,10 +92,9 @@
             background: white; 
             min-height: 40px;
         }
-        .chapter-item.active { background: #eff6ff; color: #2563eb; border-left: 3px solid #2563eb; font-weight: 600; padding-left: 7px; /* Compensate for border */ }
+        .chapter-item.active { background: #eff6ff; color: #2563eb; border-left: 3px solid #2563eb; font-weight: 600; padding-left: 7px; }
         .chapter-item.dragging { opacity: 0.5; background: #f1f5f9; border: 2px dashed #94a3b8; }
         
-        /* Chapter Text - Maximize Space */
         .chapter-item span { 
             white-space: nowrap; 
             overflow: hidden; 
@@ -243,7 +242,7 @@
     
     <label class="tool-btn">
         🖼 Image
-        <input type="file" accept="image/*" style="display:none" onchange="insertImageToEditor(this)">
+        <input type="file" accept="image/*" multiple style="display:none" onchange="insertImageToEditor(this)">
     </label>
 
     <button class="tool-btn danger" onclick="clearAll()">🗑 Clear All</button>
@@ -473,9 +472,11 @@
                     sel.addRange(range);
                 }
             }
+            // UPDATED LOOP FOR MULTIPLE DRAGGED FILES
             if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-                const file = e.dataTransfer.files[0];
-                if (file.type.startsWith('image/')) insertLocalImage(file);
+                Array.from(e.dataTransfer.files).forEach(file => {
+                    if (file.type.startsWith('image/')) insertLocalImage(file);
+                });
             }
         });
     }
@@ -504,7 +505,7 @@
     }
 
     function insertLocalImage(file) {
-        const filename = "img_" + Date.now() + "." + file.name.split('.').pop();
+        const filename = "img_" + Date.now() + "_" + Math.floor(Math.random()*1000) + "." + file.name.split('.').pop();
         book.assets[filename] = file;
         const url = URL.createObjectURL(file);
         
@@ -529,9 +530,10 @@
         saveCurrent();
     }
 
+    // UPDATED FUNCTION TO HANDLE MULTIPLE FILES
     function insertImageToEditor(input) {
-        if(!input.files[0]) return;
-        insertLocalImage(input.files[0]);
+        if(!input.files || input.files.length === 0) return;
+        Array.from(input.files).forEach(file => insertLocalImage(file));
         input.value = "";
     }
 
@@ -680,8 +682,6 @@
             li.addEventListener('drop', handleDrop);
             li.addEventListener('dragend', handleDragEnd);
 
-            // Removed the separate drag handle span here to left-align text
-
             const span = document.createElement('span');
             span.innerText = c.title || `Chapter ${i+1}`;
             li.appendChild(span);
@@ -769,7 +769,6 @@
         saveCurrent();
     }
 
-    // --- IMPORT / EXPORT UTILS ---
     function resolvePath(base, relative) {
         const stack = base.split('/'); stack.pop();
         const parts = relative.split('/');
