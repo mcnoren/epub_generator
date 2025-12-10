@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EPUB Studio v26 - Layout & Undo</title>
+    <title>EPUB Studio v27 - Block Quotes</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     
     <style id="imported-style"></style>
@@ -92,6 +92,12 @@
         /* Indent paragraphs by default */
         #editor p { margin: 0; padding: 0; min-height: 1em; text-indent: 1.5em; }
         
+        /* Block Quotes (Indented on both sides) */
+        #editor blockquote { 
+            margin: 1em 40px; 
+            color: #334155;
+        }
+
         #editor:empty:before { content: attr(placeholder); color: #94a3b8; pointer-events: none; display: block; }
         
         /* IMAGE STYLES - SIDE BY SIDE SUPPORT */
@@ -177,6 +183,7 @@
 
     <div style="width:1px; height:20px; background:#e2e8f0; margin:0 5px;"></div>
 
+    <button class="tool-btn" onclick="format('formatBlock','blockquote')" title="Block Quote">❝ Quote</button>
     <button class="tool-btn" onclick="format('insertUnorderedList')" title="Bullet List">• List</button>
     <button class="tool-btn" onclick="format('insertOrderedList')" title="Number List">1. List</button>
     <button class="tool-btn" onclick="format('indent')" title="Indent">➡</button>
@@ -704,9 +711,9 @@
                     assetManifest += `<item id="${id}" href="images/${name}" media-type="${mime}"${properties}/>\n`;
                 }
 
-                // Append text-indent rule to whatever CSS we have
+                // Append text-indent AND blockquote rules to whatever CSS we have
                 let baseCss = book.css || `body{padding:5%; line-height:1.5;} p{margin:0; padding:0;} img{max-width:100%; height:auto;}`;
-                const finalCss = baseCss + "\n p { text-indent: 1.5em; }";
+                const finalCss = baseCss + "\n p { text-indent: 1.5em; } \n blockquote { margin: 1em 40px; }";
                 
                 oebps.file("style.css", finalCss);
 
