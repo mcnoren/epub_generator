@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EPUB Studio v26 - Layout & Undo</title>
+    <title>EPUB Studio v27 - Indent Control</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         /* --- RESET & BASICS --- */
@@ -85,23 +85,18 @@
         #chapter-title { font-size: 24px; font-weight: 700; border: none; outline: none; width: 100%; margin-bottom: 15px; font-family: serif; border-bottom: 1px solid transparent; }
         
         #editor { flex: 1; outline: none; font-family: 'Georgia', serif; font-size: 18px; line-height: 1.5; }
-        #editor p { 
-            margin: 0; 
-            padding: 0; 
-            min-height: 1em; 
-            text-indent: 1.5em; /* <--- Adds indentation to the start of every paragraph */
-        }
+        #editor p { margin: 0; padding: 0; min-height: 1em; } /* Removed automatic indent here */
         #editor:empty:before { content: attr(placeholder); color: #94a3b8; pointer-events: none; display: block; }
         
         /* IMAGE STYLES - SIDE BY SIDE SUPPORT */
         #editor img { 
-            display: inline-block; /* Key for side-by-side */
+            display: inline-block;
             vertical-align: top;
             margin: 5px; 
             cursor: pointer; 
             box-sizing: border-box; 
             object-fit: contain;
-            width: 30%; /* Default small size (3 per row) */
+            width: 30%; 
             max-width: 100%;
         }
         #editor img.selected { outline: 3px solid #2563eb; box-shadow: 0 0 10px rgba(37, 99, 235, 0.3); }
@@ -165,7 +160,7 @@
     <button class="tool-btn" onclick="format('italic')"><i>I</i></button>
     <button class="tool-btn" onclick="format('formatBlock','h2')">Header</button>
     <button class="tool-btn" onclick="format('formatBlock','p')">Text</button>
-    <button class="tool-btn" onclick="removeGaps()" title="Removes empty lines">✂ Gaps</button>
+    <button class="tool-btn" onclick="indentAll()" title="Indent all paragraphs">Indent All</button> <button class="tool-btn" onclick="removeGaps()" title="Removes empty lines">✂ Gaps</button>
     <label class="tool-btn">
         🖼 Image
         <input type="file" accept="image/*" style="display:none" onchange="insertImageToEditor(this)">
@@ -219,17 +214,15 @@
     let currentId = null;
     let selectedImg = null;
 
-    // --- UPDATED LOGIC ---
-
-    // 1. Initialize Drag & Drop in window.onload
     window.onload = function() {
         addChapter();
         document.execCommand('defaultParagraphSeparator', false, 'p');
         
-        setupDragAndDrop(); // Added in previous step
+        // --- NEW INIT CALLS ---
+        setupDragAndDrop();
         setupPaste();
-        setupTabKey()
-
+        setupTabKey();
+        
         if(window.innerWidth <= 768) {
             document.querySelector('.tab.mobile-only').style.display = 'block';
             document.getElementById('mobile-title-display').style.display = 'block';
@@ -237,32 +230,13 @@
             document.querySelectorAll('.desktop-text').forEach(e=>e.style.display='none');
         }
     };
-    
-    function setupTabKey() {
-        document.getElementById('editor').addEventListener('keydown', function(e) {
-            if (e.key === 'Tab') {
-                e.preventDefault(); // Stop focus change
-                // Insert 4 non-breaking spaces
-                document.execCommand('insertHTML', false, '&nbsp;&nbsp;&nbsp;&nbsp;');
-            }
-        });
-    }
-    
-    // 2. New Drag & Drop Setup Function
+
+    // --- NEW HELPERS ---
     function setupDragAndDrop() {
         const editor = document.getElementById('editor');
-
-        editor.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            // Optional: Add a class here to highlight editor (e.g., editor.classList.add('drag-active'))
-        });
-
+        editor.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); });
         editor.addEventListener('drop', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-
-            // Move cursor to the specific drop location
+            e.preventDefault(); e.stopPropagation();
             if (document.caretRangeFromPoint) {
                 const range = document.caretRangeFromPoint(e.clientX, e.clientY);
                 if (range) {
@@ -271,18 +245,35 @@
                     sel.addRange(range);
                 }
             }
-
-            // Handle the dropped files
             if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
                 const file = e.dataTransfer.files[0];
-                if (file.type.startsWith('image/')) {
-                    insertLocalImage(file);
+                if (file.type.startsWith('image/')) insertLocalImage(file);
+            }
+        });
+    }
+
+    function setupPaste() {
+        document.getElementById('editor').addEventListener('paste', (e) => {
+            const items = (e.clipboardData || window.clipboardData).items;
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].type.indexOf("image") === 0) {
+                    e.preventDefault();
+                    insertLocalImage(items[i].getAsFile());
+                    return;
                 }
             }
         });
     }
 
-    // 3. Refactored Helper: Inserts an image file at the current cursor position
+    function setupTabKey() {
+        document.getElementById('editor').addEventListener('keydown', function(e) {
+            if (e.key === 'Tab') {
+                e.preventDefault();
+                document.execCommand('insertHTML', false, '&nbsp;&nbsp;&nbsp;&nbsp;');
+            }
+        });
+    }
+
     function insertLocalImage(file) {
         const filename = "img_" + Date.now() + "." + file.name.split('.').pop();
         book.assets[filename] = file;
@@ -292,16 +283,12 @@
         img.src = url;
         img.setAttribute('data-filename', filename);
         img.setAttribute('alt', '');
-        
-        // Default styles
         img.style.width = "30%";
         img.style.display = "inline-block";
         img.style.margin = "5px";
         
         const editor = document.getElementById('editor');
         const sel = document.getSelection();
-        
-        // Insert at cursor if inside editor, otherwise append to end
         if (sel.rangeCount > 0 && editor.contains(sel.getRangeAt(0).commonAncestorContainer)) {
             const range = sel.getRangeAt(0);
             range.insertNode(img);
@@ -309,39 +296,26 @@
         } else {
             editor.appendChild(img);
         }
-        
         saveCurrent();
     }
 
-    // 4. Updated Toolbar Button Handler (Uses the helper now)
     function insertImageToEditor(input) {
         if(!input.files[0]) return;
         insertLocalImage(input.files[0]);
-        input.value = ""; // Clear input so same file can be selected again if needed
+        input.value = "";
     }
 
-    function setupPaste() {
+    // --- INDENT LOGIC ---
+    function indentAll() {
         const editor = document.getElementById('editor');
-        editor.addEventListener('paste', (e) => {
-            // Get clipboard data
-            const clipboardData = e.clipboardData || window.clipboardData;
-            const items = clipboardData.items;
-
-            for (let i = 0; i < items.length; i++) {
-                // Check if the item is an image
-                if (items[i].type.indexOf("image") === 0) {
-                    e.preventDefault(); // Stop the browser from handling this paste
-                    
-                    const file = items[i].getAsFile();
-                    insertLocalImage(file); // Re-use the helper from the Drag & Drop step
-                    
-                    return; // Stop processing after finding the image
-                }
-            }
-            // If no image is found, the browser handles the paste normally (for text)
+        const paragraphs = editor.querySelectorAll('p');
+        paragraphs.forEach(p => {
+            p.style.textIndent = '1.5em';
         });
+        saveCurrent();
     }
 
+    // --- EXISTING LOGIC ---
     function handleEditorClick(e) {
         if(selectedImg && e.target !== selectedImg) {
             selectedImg.classList.remove('selected');
@@ -351,10 +325,8 @@
         if(e.target.tagName === 'IMG') {
             selectedImg = e.target;
             selectedImg.classList.add('selected');
-            
             let w = selectedImg.style.width || "30%";
             document.querySelector('input[type=range]').value = parseInt(w);
-
             const toolbar = document.getElementById('img-toolbar');
             const rect = selectedImg.getBoundingClientRect();
             toolbar.style.top = (rect.top + window.scrollY) + 'px';
@@ -363,12 +335,7 @@
         }
     }
 
-    function imgSlider(val) {
-        if(!selectedImg) return;
-        selectedImg.style.width = val + "%";
-        saveCurrent();
-    }
-
+    function imgSlider(val) { if(selectedImg) { selectedImg.style.width = val + "%"; saveCurrent(); } }
     function imgFloat(type) {
         if(!selectedImg) return;
         if(type === 'left') { selectedImg.style.float = 'left'; selectedImg.style.margin = '0 10px 5px 0'; }
@@ -414,7 +381,6 @@
         saveCurrent();
     }
 
-    // --- STANDARD UI ---
     function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); document.getElementById('sidebar-overlay').classList.toggle('active'); }
     function startLoader(msg) { document.getElementById('loader-overlay').classList.add('active'); document.getElementById('loader-msg').innerText = msg; document.querySelector('.spinner').style.display='block'; document.getElementById('loader-close').style.display='none'; }
     function failLoader(err) { document.getElementById('loader-msg').innerText = "Error: "+err; document.querySelector('.spinner').style.display='none'; document.getElementById('loader-close').style.display='block'; }
@@ -443,7 +409,6 @@
         }
     }
 
-    // --- IMPORT & EXPORT (Unchanged Logic) ---
     function resolvePath(base, relative) {
         const stack = base.split('/'); stack.pop();
         const parts = relative.split('/');
@@ -690,14 +655,9 @@
                     assetManifest += `<item id="${id}" href="images/${name}" media-type="${mime}"${properties}/>\n`;
                 }
 
-                // 1. Get existing CSS or use default
-                let baseCss = book.css || `body{padding:5%; line-height:1.5;} p{margin:0; padding:0;} img{max-width:100%; height:auto;}`;
-                
-                // 2. FORCE indentation by appending this rule to the end
-                // This ensures it overrides previous rules or applies if missing
-                const finalCss = baseCss + "\n p { text-indent: 1.5em; }";
-                
-                oebps.file("style.css", finalCss);
+                // --- RESTORED DEFAULT CSS (NO FORCED INDENT) ---
+                const css = book.css || `body{padding:5%; line-height:1.5;} p{margin:0; padding:0;} img{max-width:100%; height:auto;}`;
+                oebps.file("style.css", css);
 
                 let manifest = `<item id="css" href="style.css" media-type="text/css"/>\n` + assetManifest;
                 let spine = "";
@@ -714,7 +674,6 @@
                         const fname = img.getAttribute('data-filename');
                         if(fname && book.assets[fname]) img.setAttribute('src', `images/${fname}`);
                         img.removeAttribute('data-filename');
-                        // Export clean inline styles
                         if(!img.hasAttribute('alt')) img.setAttribute('alt', '');
                         img.classList.remove('selected');
                     });
