@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EPUB Studio v33 - Export Fix</title>
+    <title>EPUB Studio v34 - Plain Text Paste</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     
     <style id="imported-style"></style>
@@ -491,10 +491,13 @@
         });
     }
 
+    // --- FIXED PASTE FUNCTION: FORCE PLAIN TEXT ---
     function setupPaste() {
         document.getElementById('editor').addEventListener('paste', (e) => {
             const clipboardData = e.clipboardData || window.clipboardData;
             const items = clipboardData.items;
+
+            // 1. Check for images first
             for (let i = 0; i < items.length; i++) {
                 if (items[i].type.indexOf("image") === 0) {
                     e.preventDefault();
@@ -502,6 +505,11 @@
                     return;
                 }
             }
+            
+            // 2. If it's not an image, force plain text paste
+            e.preventDefault();
+            const text = clipboardData.getData("text/plain");
+            document.execCommand("insertText", false, text);
         });
     }
 
@@ -1015,7 +1023,6 @@
                     idToFilename[ch.id] = `ch${i+1}.xhtml`;
                 });
 
-                // TRY/CATCH PER CHAPTER to prevent full crash
                 book.chapters.forEach((ch, i) => {
                     try {
                         const fn = `ch${i+1}.xhtml`;
