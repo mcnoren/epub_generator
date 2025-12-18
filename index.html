@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EPUB Studio v35 - Robust Paste</title>
+    <title>EPUB Studio v36 - Performance Paste</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     
     <style id="imported-style"></style>
@@ -505,35 +505,44 @@
                 }
             }
             
-            // 2. Force Plain Text
+            // 2. Text Handling
             e.preventDefault();
             const text = clipboardData.getData("text/plain");
             
             if(text) {
-                try {
-                    // Try standard execCommand first (preserves Undo)
-                    // Note: This fails silently in some conditions with huge text
-                    if(!document.execCommand("insertText", false, text)) {
-                        throw new Error("Command failed");
-                    }
-                } catch(err) {
-                    // Fallback for large text or errors (Loses Undo, but works)
-                    const sel = window.getSelection();
-                    if(sel.rangeCount > 0) {
-                        const range = sel.getRangeAt(0);
-                        range.deleteContents();
-                        const textNode = document.createTextNode(text);
-                        range.insertNode(textNode);
-                        
-                        // Move cursor after inserted text
-                        range.setStartAfter(textNode);
-                        range.setEndAfter(textNode);
-                        sel.removeAllRanges();
-                        sel.addRange(range);
+                // If text is HUGE (>50k chars), skip execCommand (slow/freezes)
+                if (text.length > 50000) {
+                     insertTextDirectly(text);
+                } else {
+                    try {
+                        // Try standard method first (preserves Undo)
+                        if(!document.execCommand("insertText", false, text)) {
+                            insertTextDirectly(text);
+                        }
+                    } catch(err) {
+                        insertTextDirectly(text);
                     }
                 }
             }
         });
+    }
+
+    function insertTextDirectly(text) {
+        const sel = window.getSelection();
+        if(sel.rangeCount > 0) {
+            const range = sel.getRangeAt(0);
+            range.deleteContents();
+            const textNode = document.createTextNode(text);
+            range.insertNode(textNode);
+            
+            range.setStartAfter(textNode);
+            range.setEndAfter(textNode);
+            sel.removeAllRanges();
+            sel.addRange(range);
+            
+            // Direct DOM manipulation doesn't trigger 'input' event, so we save manually
+            saveCurrent(); 
+        }
     }
 
     function setupTabKey() {
