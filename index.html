@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EPUB Studio v34 - Plain Text Paste</title>
+    <title>EPUB Studio v35 - Robust Paste</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     
     <style id="imported-style"></style>
@@ -297,7 +297,6 @@
     let dragSrcEl = null;
     let currentLinkNode = null;
 
-    // --- HELPER: SAFE UUID (FIX FOR "OBJECT NOT FOUND" ERRORS) ---
     function generateUUID() {
         if(typeof crypto !== 'undefined' && crypto.randomUUID) {
             try { return crypto.randomUUID(); } catch(e) {}
@@ -491,13 +490,13 @@
         });
     }
 
-    // --- FIXED PASTE FUNCTION: FORCE PLAIN TEXT ---
+    // --- ROBUST PASTE FUNCTION ---
     function setupPaste() {
         document.getElementById('editor').addEventListener('paste', (e) => {
             const clipboardData = e.clipboardData || window.clipboardData;
             const items = clipboardData.items;
 
-            // 1. Check for images first
+            // 1. Check for images
             for (let i = 0; i < items.length; i++) {
                 if (items[i].type.indexOf("image") === 0) {
                     e.preventDefault();
@@ -506,10 +505,34 @@
                 }
             }
             
-            // 2. If it's not an image, force plain text paste
+            // 2. Force Plain Text
             e.preventDefault();
             const text = clipboardData.getData("text/plain");
-            document.execCommand("insertText", false, text);
+            
+            if(text) {
+                try {
+                    // Try standard execCommand first (preserves Undo)
+                    // Note: This fails silently in some conditions with huge text
+                    if(!document.execCommand("insertText", false, text)) {
+                        throw new Error("Command failed");
+                    }
+                } catch(err) {
+                    // Fallback for large text or errors (Loses Undo, but works)
+                    const sel = window.getSelection();
+                    if(sel.rangeCount > 0) {
+                        const range = sel.getRangeAt(0);
+                        range.deleteContents();
+                        const textNode = document.createTextNode(text);
+                        range.insertNode(textNode);
+                        
+                        // Move cursor after inserted text
+                        range.setStartAfter(textNode);
+                        range.setEndAfter(textNode);
+                        sel.removeAllRanges();
+                        sel.addRange(range);
+                    }
+                }
+            }
         });
     }
 
@@ -523,7 +546,6 @@
     }
 
     function insertLocalImage(file) {
-        // Safe filename generation
         const filename = "img_" + Date.now() + "_" + Math.floor(Math.random()*1000) + "." + file.name.split('.').pop();
         book.assets[filename] = file;
         const url = URL.createObjectURL(file);
