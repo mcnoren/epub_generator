@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EPUB Studio v36 - Performance Paste</title>
+    <title>EPUB Studio v37 - No Spacing Tool</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     
     <style id="imported-style"></style>
@@ -239,6 +239,7 @@
     <button class="tool-btn" onclick="format('formatBlock','h2')">Header</button>
     <button class="tool-btn" onclick="format('formatBlock','p')">Text</button>
     <button class="tool-btn" onclick="format('removeFormat')" title="Clear Formatting">Clean</button>
+    <button class="tool-btn" onclick="removeGaps()" title="Removes empty lines and resets spacing">No Spacing</button>
     
     <label class="tool-btn">
         🖼 Image
@@ -662,10 +663,27 @@
 
     function removeGaps() {
         const editor = document.getElementById('editor');
-        editor.querySelectorAll('p, div, h1, h2, h3').forEach(p => {
-            if(p.innerText.trim() === '' && p.querySelector('img') === null) p.remove();
+        
+        // 1. Remove Empty Block Elements
+        editor.querySelectorAll('p, div, h1, h2, h3, blockquote').forEach(el => {
+            if(el.innerText.replace(/\u00a0/g, ' ').trim() === '' && el.querySelectorAll('img').length === 0) {
+                el.remove();
+            } else {
+                // 2. Remove CSS spacing
+                el.style.marginTop = '0px';
+                el.style.marginBottom = '0px';
+                el.style.paddingTop = '0px';
+                el.style.paddingBottom = '0px';
+                // 3. Clear text indent so global CSS handles it
+                el.style.textIndent = ''; 
+            }
         });
-        Array.from(editor.childNodes).forEach(node => { if(node.nodeName === 'BR') node.remove(); });
+        
+        // 3. Remove standalone <br> at root (prevents huge gaps between paragraphs)
+        Array.from(editor.childNodes).forEach(node => { 
+            if(node.nodeName === 'BR') node.remove(); 
+        });
+        
         saveCurrent();
     }
 
